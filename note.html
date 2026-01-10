@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Note Taker</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        textarea { width: 100%; height: 400px; padding: 10px; }
+        button { margin-top: 10px; padding: 5px 10px; }
+    </style>
+</head>
+<body>
+    <textarea id="noteText" placeholder="Type your note here..."></textarea>
+    <button id="saveBtn">Save</button>
+
+    <script>
+        const noteText = document.getElementById('noteText');
+        const saveBtn = document.getElementById('saveBtn');
+
+        // Load saved note on page load
+        const savedNote = localStorage.getItem('note');
+        if (savedNote) {
+            noteText.value = savedNote;
+        }
+
+        // Save note when button is clicked
+        saveBtn.addEventListener('click', () => {
+            localStorage.setItem('note', noteText.value);
+        });
+    </script>
+</body>
+</html>
