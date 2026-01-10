@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Markdown Notebook</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 0; 
+            padding: 0; 
+            height: 100vh;
+            display: flex;
+            flex-direction: row;
+        }
+        .panel {
+            height: 100vh;
+            overflow-y: auto;
+            padding: 10px;
+        }
+        .notes-panel {
+            width: 20%;
+            border-right: 1px solid #ccc;
+        }
+        .edit-panel {
+            width: 60%;
+            display: flex;
+            flex-direction: column;
+        }
+        .history-panel {
+            width: 20%;
+            border-left: 1px solid #ccc;
+        }
+        .create-note-btn {
+            padding: 8px 16px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border: none;
+            background-color: #28a745;
+            color: white;
+            cursor: pointer;
+            width: 100%;
+            text-align: center;
+        }
+        .create-note-btn:hover {
+            background-color: #218838;
+        }
+        .note-item {
+            padding: 8px;
+            margin: 5px 0;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .note-item:hover {
+            background-color: #e0e0e0;
+        }
+        .note-item.selected {
+            background-color: #007bff;
+            color: white;
+        }
+        .edit-content {
+            width: 100%;
+            height: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+            resize: none;
+            font-family: monospace;
+        }
+        .edit-toolbar {
+            padding: 10px;
+            border-top: 1px solid #ccc;
+            display: flex;
+            gap: 10px;
+        }
+        .edit-btn {
+            padding: 8px 16px;
+            border-radius: 4px;
+            border: none;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        .edit-btn:hover {
+            background-color: #0056b3;
+        }
+        .history-item {
+            padding: 8px;
+            margin: 5px 0;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .history-item:hover {
+            background-color: #e0e0e0;
+        }
+        .markdown-view {
+            padding: 10px;
+            width: 100%;
+            height: 100%;
+            overflow-y: auto;
+        }
+        .context-menu {
+            position: absolute;
+            background-color: white;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            z-index: 1000;
+            display: none;
+        }
+        .context-menu-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #eee;
+        }
+        .context-menu-item:last-child {
+            border-bottom: none;
+        }
+        .context-menu-item:hover {
+            background-color: #f0f0f0;
+        }
+        .markdown-content {
+            margin: 0;
+            padding: 0;
+        }
+        .markdown-content h1 {
+            font-size: 2em;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 0.3em;
+        }
+        .markdown-content h2 {
+            font-size: 1.5em;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 0.3em;
+        }
+        .markdown-content h3 {
+            font-size: 1.2em;
+        }
+        .markdown-content p {
+            line-height: 1.6;
+        }
+        .markdown-content code {
+            background-color: #f4f4f4;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .markdown-content pre {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border-radius: 3px;
+            overflow-x: auto;
+        }
+        .markdown-content ul, .markdown-content ol {
+            padding-left: 20px;
+        }
+        .markdown-content blockquote {
+            border-left: 4px solid #ccc;
+            padding-left: 10px;
+            margin-left: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="panel notes-panel" id="notesPanel">
+        <button class="create-note-btn" id="createNoteBtn">Create Note</button>
+        <div id="notesList"></div>
+    </div>
+    <div class="panel edit-panel" id="editPanel">
+        <textarea class="edit-content" id="editContent" placeholder="Enter your markdown content here..."></textarea>
+        <div class="edit-toolbar">
+            <button class="edit-btn" id="toggleViewBtn">Show</button>
+            <button class="edit-btn" id="saveBtn">Save</button>
+        </div>
+    </div>
+    <div class="panel history-panel" id="historyPanel">
+        <h3>History</h3>
+        <div id="historyList"></div>
+        <div id="contextMenu" class="context-menu"></div>
+    </div>
+
+    <script>
+        // Global variables
+        let notes = {};
+        let currentNoteId = null;
+        let currentView = 'source'; // 'source' or 'preview'
+        let autoSaveTimer = null;
+        let lastSavedContent = '';
+
+        // DOM Elements
+        const notesPanel = document.getElementById('notesPanel');
+        const notesList = document.getElementById('notesList');
+        const createNoteBtn = document.getElementById('createNoteBtn');
+        const editPanel = document.getElementById('editPanel');
+        const editContent = document.getElementById('editContent');
+        const toggleViewBtn = document.getElementById('toggleViewBtn');
+        const saveBtn = document.getElementById('saveBtn');
+        const historyPanel = document.getElementById('historyPanel');
+        const historyList = document.getElementById('historyList');
+        const contextMenu = document.getElementById('contextMenu');
+
+        // Initialize the application
+        function init() {
+            console.log('Initializing application');
+            loadNotes();
+            updateNotesList();
+            setupEventListeners();
+            console.log('Application initialized');
+        }
+
+        // Load notes from localStorage
+        function loadNotes() {
+            console.log('Loading notes from localStorage');
+            const savedNotes = localStorage.getItem('markdownNotes');
+            if (savedNotes) {
+                console.log('Found saved notes');
+                notes = JSON.parse(savedNotes);
+            } else {
+                console.log('No saved notes, creating default');
+                // Initialize with a default note if none exists
+                const defaultNoteId = Date.now().toString();
+                notes = {
+                    [defaultNoteId]: {
+                        title: 'Default Note',
+                        content: '# Welcome to Markdown Notebook\n\nStart writing your notes here...',
+                        history: []
+                    }
+                };
+                saveNotes();
+            }
+            console.log('Notes loaded:', notes);
+        }
+
+        // Save notes to localStorage
+        function saveNotes() {
+            localStorage.setItem('markdownNotes', JSON.stringify(notes));
+        }
+
+        // Setup event listeners
+        function setupEventListeners() {
+            console.log('Setting up event listeners');
+            if (createNoteBtn) {
+                createNoteBtn.addEventListener('click', function() {
+                    console.log('Create note button clicked - inside event listener');
+                    notesAdd();
+                });
+                console.log('Create note button event listener set');
+            } else {
+                console.log('ERROR: createNoteBtn not found');
+            }
+            
+            if (editContent) {
+                editContent.addEventListener('input', handleEditInput);
+                console.log('Edit content input listener set');
+            }
+            
+            if (toggleViewBtn) {
+                toggleViewBtn.addEventListener('click', editToggleView);
+                console.log('Toggle view button listener set');
+            }
+            
+            if (saveBtn) {
+                saveBtn.addEventListener('click', editSave);
+                console.log('Save button listener set');
+            }
+            
+            // Hide context menu when clicking elsewhere
+            document.addEventListener('click', (e) => {
+                if (e.target !== contextMenu && !contextMenu.contains(e.target)) {
+                    contextMenu.style.display = 'none';
+                }
+            });
+            console.log('Global click listener set');
+        }
+
+        // Handle input in edit panel for auto-save
+        function handleEditInput() {
+            // Clear existing timer
+            if (autoSaveTimer) {
+                clearTimeout(autoSaveTimer);
+            }
+            
+            // Set new timer (300ms delay)
+            autoSaveTimer = setTimeout(() => {
+                editSave();
+            }, 300);
+        }
+
+        // Notes panel functions
+        function notesAdd() {
+            console.log('notesAdd function called');
+            // Create new note with datetime title
+            const now = new Date();
+            const dateTimeString = now.toLocaleString();
+            const noteId = Date.now().toString();
+            notes[noteId] = {
+                title: `Note ${dateTimeString}`,
+                content: '',
+                history: []
+            };
+            console.log('Created note with ID:', noteId);
+            saveNotes();
+            updateNotesList();
+            selectNote(noteId);
+            console.log('Note creation completed');
+        }
+
+        function notesDelete(noteId) {
+            if (confirm('Are you sure you want to delete this note?')) {
+                delete notes[noteId];
+                saveNotes();
+                updateNotesList();
+                
+                // If we deleted the current note, select the first one or clear the editor
+                if (currentNoteId === noteId) {
+                    if (Object.keys(notes).length > 0) {
+                        const firstNoteId = Object.keys(notes)[0];
+                        selectNote(firstNoteId);
+                    } else {
+                        editContent.value = '';
+                        currentNoteId = null;
+                    }
+                }
+            }
+        }
+
+        function notesRename(noteId) {
+            const newTitle = prompt('Enter new title for the note:', notes[noteId].title);
+            if (newTitle !== null && newTitle.trim() !== '') {
+                notes[noteId].title = newTitle;
+                saveNotes();
+                updateNotesList();
+            }
+        }
+
+        function selectNote(noteId) {
+            if (notes[noteId]) {
+                currentNoteId = noteId;
+                editLoad(noteId);
+                updateNotesList();
+                historyList.innerHTML = '';
+                updateHistoryList();
+            }
+        }
+
+        function updateNotesList() {
+            notesList.innerHTML = '';
+            
+            for (const [noteId, note] of Object.entries(notes)) {
+                const div = document.createElement('div');
+                div.className = 'note-item';
+                if (currentNoteId === noteId) {
+                    div.classList.add('selected');
+                }
+                div.textContent = note.title || 'Untitled Note';
+                div.addEventListener('click', () => {
+                    selectNote(noteId);
+                });
+                // Add right-click event listener for context menu
+                div.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    showNoteContextMenu(e, noteId);
+                });
+                notesList.appendChild(div);
+            }
+        }
+
+        function showNoteContextMenu(event, noteId) {
+            contextMenu.style.display = 'block';
+            contextMenu.style.left = event.pageX + 'px';
+            contextMenu.style.top = event.pageY + 'px';
+            
+            // Clear existing menu items
+            contextMenu.innerHTML = '';
+            
+            // Rename option
+            const renameItem = document.createElement('div');
+            renameItem.className = 'context-menu-item';
+            renameItem.textContent = 'Rename';
+            renameItem.addEventListener('click', () => {
+                notesRename(noteId);
+                contextMenu.style.display = 'none';
+            });
+            contextMenu.appendChild(renameItem);
+            
+            // Delete option
+            const deleteItem = document.createElement('div');
+            deleteItem.className = 'context-menu-item';
+            deleteItem.textContent = 'Delete';
+            deleteItem.addEventListener('click', () => {
+                notesDelete(noteId);
+                contextMenu.style.display = 'none';
+            });
+            contextMenu.appendChild(deleteItem);
+        }
+
+        // Edit panel functions
+        function editLoad(noteId) {
+            if (notes[noteId]) {
+                editContent.value = notes[noteId].content;
+                lastSavedContent = notes[noteId].content;
+                currentView = 'source';
+                toggleViewBtn.textContent = 'Show';
+            }
+        }
+
+        function editToggleView() {
+            if (currentView === 'source') {
+                // Show preview - using a simple markdown implementation for compatibility
+                const markdownContent = editContent.value
+                    .replace(/\n/g, '<br>')
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                    .replace(/`(.*?)`/g, '<code>$1</code>')
+                    .replace(/^### (.*$)/gm, '<h3>$1</h3>')
+                    .replace(/^## (.*$)/gm, '<h2>$1</h2>')
+                    .replace(/^# (.*$)/gm, '<h1>$1</h1>')
+                    .replace(/^- (.*$)/gm, '<li>$1</li>')
+                    .replace(/<li>(.*?)<\/li>/g, '<ul><li>$1</li></ul>');
+                
+                editContent.style.display = 'none';
+                const previewDiv = document.createElement('div');
+                previewDiv.className = 'markdown-view';
+                previewDiv.id = 'markdownPreview';
+                previewDiv.innerHTML = markdownContent;
+                editPanel.appendChild(previewDiv);
+                toggleViewBtn.textContent = 'Source';
+                currentView = 'preview';
+            } else {
+                // Show source
+                const previewDiv = document.getElementById('markdownPreview');
+                if (previewDiv) {
+                    previewDiv.remove();
+                }
+                editContent.style.display = 'block';
+                toggleViewBtn.textContent = 'Show';
+                currentView = 'source';
+            }
+        }
+
+        function editSave() {
+            if (currentNoteId && notes[currentNoteId]) {
+                const content = editContent.value;
+                if (content !== lastSavedContent) {
+                    notes[currentNoteId].content = content;
+                    lastSavedContent = content;
+                    saveNotes();
+                    
+                    // Create new version in history only when save button is clicked
+                    historyCreate(currentNoteId);
+                    
+                    // Update history panel
+                    updateHistoryList();
+                }
+            }
+        }
+
+        // History panel functions
+        function historyCreate(noteId) {
+            if (notes[noteId]) {
+                const now = new Date();
+                // Create a unique timestamp to avoid duplicates
+                let timestamp = now.toLocaleString();
+                
+                // Check if this timestamp already exists and make it unique
+                let counter = 1;
+                const originalTimestamp = timestamp;
+                while (notes[noteId].history.some(v => v.timestamp === timestamp)) {
+                    timestamp = `${originalTimestamp} (${counter})`;
+                    counter++;
+                }
+                
+                const version = {
+                    timestamp: timestamp,
+                    content: notes[noteId].content
+                };
+                notes[noteId].history.unshift(version);
+                // Keep only last 20 versions
+                if (notes[noteId].history.length > 20) {
+                    notes[noteId].history = notes[noteId].history.slice(0, 20);
+                }
+                saveNotes();
+            }
+        }
+
+        function historyDelete(noteId, versionId) {
+            if (notes[noteId] && notes[noteId].history[versionId]) {
+                // Remove the specific version
+                notes[noteId].history.splice(versionId, 1);
+                saveNotes();
+                updateHistoryList();
+            }
+        }
+
+        function historyRename(noteId, versionId, newName) {
+            if (notes[noteId] && notes[noteId].history[versionId]) {
+                notes[noteId].history[versionId].timestamp = newName;
+                saveNotes();
+                updateHistoryList();
+            }
+        }
+
+        function updateHistoryList() {
+            historyList.innerHTML = '';
+            
+            if (currentNoteId && notes[currentNoteId]) {
+                const note = notes[currentNoteId];
+                
+                // Add current version
+                const currentDiv = document.createElement('div');
+                currentDiv.className = 'history-item';
+                currentDiv.textContent = 'Current Version';
+                currentDiv.addEventListener('click', () => {
+                    editContent.value = note.content;
+                    lastSavedContent = note.content;
+                });
+                // Do NOT add right-click event listener for context menu on current version
+                historyList.appendChild(currentDiv);
+                
+                // Add version history
+                note.history.forEach((version, index) => {
+                    const div = document.createElement('div');
+                    div.className = 'history-item';
+                    div.textContent = version.timestamp;
+                    div.addEventListener('click', () => {
+                        editContent.value = version.content;
+                        lastSavedContent = version.content;
+                    });
+                    // Add right-click event listener for context menu
+                    div.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        showHistoryContextMenu(e, currentNoteId, index);
+                    });
+                    historyList.appendChild(div);
+                });
+            }
+        }
+
+        function showHistoryContextMenu(event, noteId, versionId) {
+            contextMenu.style.display = 'block';
+            contextMenu.style.left = event.pageX + 'px';
+            contextMenu.style.top = event.pageY + 'px';
+            
+            // Clear existing menu items
+            contextMenu.innerHTML = '';
+            
+            // Rename option
+            const renameItem = document.createElement('div');
+            renameItem.className = 'context-menu-item';
+            renameItem.textContent = 'Rename';
+            renameItem.addEventListener('click', () => {
+                const newName = prompt('Enter new name for the version:', 
+                    typeof versionId === 'string' ? 'Current Version' : notes[noteId].history[versionId].timestamp);
+                if (newName !== null && newName.trim() !== '') {
+                    if (typeof versionId === 'string' && versionId === 'current') {
+                        // For current version, we don't actually rename it, but we could update a note property
+                    } else {
+                        historyRename(noteId, versionId, newName);
+                    }
+                }
+                contextMenu.style.display = 'none';
+            });
+            contextMenu.appendChild(renameItem);
+            
+            // Delete option - only show for versions, not current
+            if (typeof versionId !== 'string' || versionId !== 'current') {
+                const deleteItem = document.createElement('div');
+                deleteItem.className = 'context-menu-item';
+                deleteItem.textContent = 'Delete';
+                deleteItem.addEventListener('click', () => {
+                    if (confirm('Are you sure you want to delete this version?')) {
+                        historyDelete(noteId, versionId);
+                    }
+                    contextMenu.style.display = 'none';
+                });
+                contextMenu.appendChild(deleteItem);
+            }
+        }
+
+        // Initialize the application when the page loads
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
+</body>
+</html>
