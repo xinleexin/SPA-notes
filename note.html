@@ -3,29 +3,154 @@
 <head>
     <title>Simple Note Taker</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        textarea { width: 100%; height: 400px; padding: 10px; }
-        button { margin-top: 10px; padding: 5px 10px; }
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 0; 
+            padding: 0; 
+            height: 100vh;
+            display: flex;
+            flex-direction: row;
+        }
+        .main-content {
+            width: 80%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        textarea {
+            width: 100%;
+            height: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+            resize: none;
+        }
+        .save-btn {
+            padding: 8px 16px;
+            margin: 10px;
+            align-self: flex-start;
+            border-radius: 50%;
+            border: none;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .save-btn:hover {
+            background-color: #0056b3;
+        }
+        .sidebar {
+            width: 20%;
+            height: 100vh;
+            overflow-y: auto;
+            padding: 10px;
+            border-left: 1px solid #ccc;
+        }
+        .history-item {
+            padding: 8px;
+            margin: 5px 0;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .history-item:hover {
+            background-color: #e0e0e0;
+        }
     </style>
 </head>
 <body>
-    <textarea id="noteText" placeholder="Type your note here..."></textarea>
-    <button id="saveBtn">Save</button>
+    <div class="main-content">
+        <textarea id="noteText" placeholder="Type your note here..."></textarea>
+        <button id="saveBtn" class="save-btn">💾</button>
+    </div>
+    <div class="sidebar" id="historyPanel">
+        <h3>History</h3>
+        <div id="historyList"></div>
+    </div>
 
     <script>
         const noteText = document.getElementById('noteText');
         const saveBtn = document.getElementById('saveBtn');
-
+        const historyList = document.getElementById('historyList');
+        
+        let lastSavedContent = '';
+        
         // Load saved note on page load
         const savedNote = localStorage.getItem('note');
         if (savedNote) {
             noteText.value = savedNote;
+            lastSavedContent = savedNote;
         }
-
-        // Save note when button is clicked
-        saveBtn.addEventListener('click', () => {
+        
+        // Auto-save functionality (only updates the main note, not history)
+        noteText.addEventListener('input', () => {
+            // Save to localStorage immediately on input (but don't create history)
             localStorage.setItem('note', noteText.value);
         });
+        
+        // Save note when button is clicked
+        saveBtn.addEventListener('click', () => {
+            saveNote();
+        });
+        
+        function saveNote() {
+            const content = noteText.value;
+            if (content !== lastSavedContent) {
+                // Save to localStorage
+                localStorage.setItem('note', content);
+                lastSavedContent = content;
+                
+                // Save to history
+                saveToHistory(content);
+            }
+        }
+        
+        function saveToHistory(content) {
+            const timestamp = new Date().toLocaleString();
+            const historyItem = {
+                timestamp: timestamp,
+                content: content
+            };
+            
+            // Get existing history or initialize empty array
+            let history = JSON.parse(localStorage.getItem('noteHistory') || '[]');
+            
+            // Add new item to beginning of array
+            history.unshift(historyItem);
+            
+            // Keep only last 20 items
+            if (history.length > 20) {
+                history = history.slice(0, 20);
+            }
+            
+            // Save updated history
+            localStorage.setItem('noteHistory', JSON.stringify(history));
+            
+            // Update the history panel
+            updateHistoryPanel();
+        }
+        
+        function updateHistoryPanel() {
+            const history = JSON.parse(localStorage.getItem('noteHistory') || '[]');
+            historyList.innerHTML = '';
+            
+            history.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'history-item';
+                div.textContent = item.timestamp;
+                div.addEventListener('click', () => {
+                    noteText.value = item.content;
+                    lastSavedContent = item.content;
+                });
+                historyList.appendChild(div);
+            });
+        }
+        
+        // Initialize history panel on load
+        updateHistoryPanel();
     </script>
 </body>
 </html>
