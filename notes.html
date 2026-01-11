@@ -161,6 +161,8 @@
     </style>
 </head>
 <body>
+    <!-- Include marked.js for better markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <div class="panel notes-panel" id="notesPanel">
         <button class="create-note-btn" id="createNoteBtn">Create Note</button>
         <div id="notesList"></div>
@@ -405,17 +407,8 @@
 
         function editToggleView() {
             if (currentView === 'source') {
-                // Show preview - using a simple markdown implementation for compatibility
-                const markdownContent = editContent.value
-                    .replace(/\n/g, '<br>')
-                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                    .replace(/`(.*?)`/g, '<code>$1</code>')
-                    .replace(/^### (.*$)/gm, '<h3>$1</h3>')
-                    .replace(/^## (.*$)/gm, '<h2>$1</h2>')
-                    .replace(/^# (.*$)/gm, '<h1>$1</h1>')
-                    .replace(/^- (.*$)/gm, '<li>$1</li>')
-                    .replace(/<li>(.*?)<\/li>/g, '<ul><li>$1</li></ul>');
+                // Show preview - using marked.js for comprehensive markdown rendering
+                const markdownContent = marked.parse(editContent.value);
                 
                 editContent.style.display = 'none';
                 const previewDiv = document.createElement('div');
