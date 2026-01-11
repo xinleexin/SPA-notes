@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bouncing Circle Game</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        #counter {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 48px;
+            font-weight: bold;
+            color: #333;
+            z-index: 10;
+            pointer-events: none;
+        }
+        
+        #circle {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background-color: #4CAF50;
+            cursor: pointer;
+            position: absolute;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2), 0 0 20px rgba(76, 175, 80, 0.5);
+            animation: float 8s infinite ease-in-out;
+            transform-style: preserve-3d;
+            transition: transform 0.3s ease;
+        }
+        
+        #circle:hover {
+            transform: scale(1.1) rotateY(10deg) rotateX(10deg);
+        }
+        
+        @keyframes float {
+            0% {
+                transform: translate(0, 0) scale(1);
+            }
+            25% {
+                transform: translate(var(--x1), var(--y1)) scale(1.1);
+            }
+            50% {
+                transform: translate(var(--x2), var(--y2)) scale(1.2);
+            }
+            75% {
+                transform: translate(var(--x3), var(--y3)) scale(1.1);
+            }
+            100% {
+                transform: translate(0, 0) scale(1);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="counter">0</div>
+    <div id="circle"></div>
+
+    <script>
+        const counterElement = document.getElementById('counter');
+        const circleElement = document.getElementById('circle');
+        let count = 0;
+        let animationDuration = 8; // Initial animation duration in seconds
+        
+        // Function to generate random movement coordinates
+        function generateRandomMovement() {
+            // Allow movement to reach edges of the window
+            const x1 = (Math.random() - 0.5) * 150 + 'vw';
+            const y1 = (Math.random() - 0.5) * 100 + 'vh';
+            const x2 = (Math.random() - 0.5) * 130 + 'vw';
+            const y2 = (Math.random() - 0.5) * 90 + 'vh';
+            const x3 = (Math.random() - 0.5) * 120 + 'vw';
+            const y3 = (Math.random() - 0.5) * 110 + 'vh';
+            
+            circleElement.style.setProperty('--x1', x1);
+            circleElement.style.setProperty('--y1', y1);
+            circleElement.style.setProperty('--x2', x2);
+            circleElement.style.setProperty('--y2', y2);
+            circleElement.style.setProperty('--x3', x3);
+            circleElement.style.setProperty('--y3', y3);
+        }
+        
+        // Initialize random movement
+        generateRandomMovement();
+        
+        circleElement.addEventListener('click', function() {
+            count++;
+            counterElement.textContent = count;
+            
+            // Increase speed with each click (decrease animation duration)
+            animationDuration = Math.max(1, animationDuration - 0.5);
+            circleElement.style.animationDuration = animationDuration + 's';
+            
+            // Generate new random movement
+            generateRandomMovement();
+            
+            // Add a little animation effect when clicked
+            circleElement.style.backgroundColor = '#FF5722';
+            setTimeout(() => {
+                circleElement.style.backgroundColor = '#4CAF50';
+            }, 100);
+        });
+    </script>
+</body>
+</html>
