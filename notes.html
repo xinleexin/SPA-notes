@@ -92,6 +92,10 @@
         .history-item:hover {
             background-color: #e0e0e0;
         }
+        .history-item.selected {
+            background-color: #007bff;
+            color: white;
+        }
         .markdown-view {
             padding: 10px;
             width: 100%;
@@ -176,7 +180,7 @@
         <textarea class="edit-content" id="editContent" placeholder="Enter your markdown content here..."></textarea>
         <div class="edit-toolbar">
             <button class="edit-btn" id="toggleViewBtn">Show</button>
-            <button class="edit-btn" id="saveBtn">Save</button>
+            <button class="edit-btn" id="saveBtn" title="Save as a new version">Save</button>
         </div>
     </div>
     <div class="panel history-panel" id="historyPanel">
@@ -528,10 +532,9 @@
                 // Add current version
                 const currentDiv = document.createElement('div');
                 currentDiv.className = 'history-item selected';
-                currentDiv.textContent = 'Current Version';
+                currentDiv.textContent = 'Current Version (auto saving)';
                 currentDiv.addEventListener('click', () => {
-                    editContent.value = note.content;
-                    lastSavedContent = note.content;
+                    historyVersionSelect(currentNoteId, 'current');
                 });
                 // Do NOT add right-click event listener for context menu on current version
                 historyList.appendChild(currentDiv);
@@ -542,8 +545,7 @@
                     div.className = 'history-item';
                     div.textContent = version.timestamp;
                     div.addEventListener('click', () => {
-                        editContent.value = version.content;
-                        lastSavedContent = version.content;
+                        historyVersionSelect(currentNoteId, index);
                     });
                     // Add right-click event listener for context menu
                     div.addEventListener('contextmenu', (e) => {
@@ -552,6 +554,33 @@
                     });
                     historyList.appendChild(div);
                 });
+            }
+        }
+
+        function historyVersionSelect(noteId, versionIndex) {
+            // Clear previous selections
+            const historyItems = historyList.querySelectorAll('.history-item');
+            historyItems.forEach(item => {
+                item.classList.remove('selected');
+            });
+            
+            // Select the clicked item
+            if (versionIndex === 'current') {
+                // Select the current version item (which is the first item)
+                const currentDiv = historyList.firstChild;
+                if (currentDiv && currentDiv.classList.contains('history-item')) {
+                    currentDiv.classList.add('selected');
+                }
+                editContent.value = notes[noteId].content;
+                lastSavedContent = notes[noteId].content;
+            } else {
+                // Select the specific version item
+                const versionDiv = historyList.children[versionIndex + 1]; // +1 because of current version
+                if (versionDiv && versionDiv.classList.contains('history-item')) {
+                    versionDiv.classList.add('selected');
+                }
+                editContent.value = notes[noteId].history[versionIndex].content;
+                lastSavedContent = notes[noteId].history[versionIndex].content;
             }
         }
 
