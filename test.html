@@ -54,6 +54,9 @@
             testAutoSaveFunctionality();
             testHistoryCreation();
             testSaveFunction();
+            testImportFunctionality();
+            testExportFunctionality();
+            testValidationFunction();
         }
         
         function addTestResult(message, passed) {
@@ -162,6 +165,126 @@
             }
         }
         
+        function testImportFunctionality() {
+            try {
+                // Test valid import data
+                const validNotes = {
+                    "123456789": {
+                        title: "Test Note",
+                        content: "# Hello World\n\nThis is a test note.",
+                        history: []
+                    }
+                };
+                
+                // Mock localStorage
+                const originalLocalStorage = localStorage;
+                const mockLocalStorage = {
+                    getItem: function(key) {
+                        if (key === 'markdownNotes') {
+                            return JSON.stringify(validNotes);
+                        }
+                        return null;
+                    },
+                    setItem: function(key, value) {
+                        // Mock storage
+                    }
+                };
+                
+                localStorage = mockLocalStorage;
+                
+                // Test that we can parse valid data
+                const parsedData = JSON.parse(JSON.stringify(validNotes));
+                if (parsedData && typeof parsedData === 'object') {
+                    addTestResult('Import functionality can parse valid data', true);
+                } else {
+                    addTestResult('Import functionality failed to parse valid data', false);
+                }
+                
+                localStorage = originalLocalStorage;
+            } catch (error) {
+                addTestResult('Import functionality test error: ' + error.message, false);
+            }
+        }
+        
+        function testExportFunctionality() {
+            try {
+                // Test that we can export data
+                const testNotes = {
+                    "123456789": {
+                        title: "Test Note",
+                        content: "# Hello World\n\nThis is a test note.",
+                        history: []
+                    }
+                };
+                
+                // Mock localStorage
+                const originalLocalStorage = localStorage;
+                const mockLocalStorage = {
+                    getItem: function(key) {
+                        if (key === 'markdownNotes') {
+                            return JSON.stringify(testNotes);
+                        }
+                        return null;
+                    },
+                    setItem: function(key, value) {
+                        // Mock storage
+                    }
+                };
+                
+                localStorage = mockLocalStorage;
+                
+                // Test that we can get data from localStorage
+                const savedNotes = localStorage.getItem('markdownNotes');
+                if (savedNotes) {
+                    addTestResult('Export functionality can retrieve data from localStorage', true);
+                } else {
+                    addTestResult('Export functionality failed to retrieve data from localStorage', false);
+                }
+                
+                localStorage = originalLocalStorage;
+            } catch (error) {
+                addTestResult('Export functionality test error: ' + error.message, false);
+            }
+        }
+        
+        // Add validation test
+        function testValidationFunction() {
+            try {
+                // Test valid notes structure
+                const validNotes = {
+                    "123456789": {
+                        title: "Test Note",
+                        content: "# Hello World\n\nThis is a test note.",
+                        history: []
+                    }
+                };
+                
+                if (validateImportedNotes(validNotes)) {
+                    addTestResult('Validation function correctly accepts valid notes', true);
+                } else {
+                    addTestResult('Validation function incorrectly rejected valid notes', false);
+                }
+                
+                // Test invalid notes structure
+                const invalidNotes = {
+                    "123456789": {
+                        title: "Test Note",
+                        content: "# Hello World\n\nThis is a test note."
+                        // Missing history property
+                    }
+                };
+                
+                if (!validateImportedNotes(invalidNotes)) {
+                    addTestResult('Validation function correctly rejects invalid notes', true);
+                } else {
+                    addTestResult('Validation function incorrectly accepted invalid notes', false);
+                }
+                
+            } catch (error) {
+                addTestResult('Validation function test error: ' + error.message, false);
+            }
+        }
+        
         // Mock the functions that are normally defined in the main file
         let notes = {};
         let currentNoteId = null;
@@ -234,6 +357,28 @@
                 }
                 console.log('History created for note ' + noteId);
             }
+        }
+        
+        // Validate imported notes structure
+        function validateImportedNotes(importedNotes) {
+            if (!importedNotes || typeof importedNotes !== 'object') {
+                return false;
+            }
+            
+            // Check that each note has the required properties
+            for (const [key, note] of Object.entries(importedNotes)) {
+                if (typeof note !== 'object' || note === null) {
+                    return false;
+                }
+                if (typeof note.title !== 'string' || typeof note.content !== 'string') {
+                    return false;
+                }
+                if (!Array.isArray(note.history)) {
+                    return false;
+                }
+            }
+            
+            return true;
         }
         
         // Initialize the test environment

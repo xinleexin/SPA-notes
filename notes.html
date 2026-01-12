@@ -175,6 +175,10 @@
     <div class="panel notes-panel" id="notesPanel">
         <button class="create-note-btn" id="createNoteBtn">Create Note</button>
         <div id="notesList"></div>
+        <div style="margin-top: 10px; padding: 10px; border-top: 1px solid #ccc;">
+            <button class="create-note-btn" id="importNotesBtn" style="background-color: #17a2b8;">Import Notes</button>
+            <button class="create-note-btn" id="exportNotesBtn" style="background-color: #28a745;">Export Notes</button>
+        </div>
     </div>
     <div class="panel edit-panel" id="editPanel">
         <textarea class="edit-content" id="editContent" placeholder="Enter your markdown content here..."></textarea>
@@ -196,11 +200,15 @@
         let currentView = 'source'; // 'source' or 'preview'
         let autoSaveTimer = null;
         let lastSavedContent = '';
+        let importedFromFile = false; // Track if notes were imported from a file
+        let importedFilePath = ''; // Track the path of the imported file
 
         // DOM Elements
         const notesPanel = document.getElementById('notesPanel');
         const notesList = document.getElementById('notesList');
         const createNoteBtn = document.getElementById('createNoteBtn');
+        const importNotesBtn = document.getElementById('importNotesBtn');
+        const exportNotesBtn = document.getElementById('exportNotesBtn');
         const editPanel = document.getElementById('editPanel');
         const editContent = document.getElementById('editContent');
         const toggleViewBtn = document.getElementById('toggleViewBtn');
@@ -259,6 +267,20 @@
                 console.log('ERROR: createNoteBtn not found');
             }
             
+            if (importNotesBtn) {
+                importNotesBtn.addEventListener('click', importNotes);
+                console.log('Import notes button event listener set');
+            } else {
+                console.log('ERROR: importNotesBtn not found');
+            }
+            
+            if (exportNotesBtn) {
+                exportNotesBtn.addEventListener('click', exportNotes);
+                console.log('Export notes button event listener set');
+            } else {
+                console.log('ERROR: exportNotesBtn not found');
+            }
+            
             if (editContent) {
                 editContent.addEventListener('input', handleEditInput);
                 console.log('Edit content input listener set');
@@ -281,6 +303,171 @@
                 }
             });
             console.log('Global click listener set');
+        }
+
+        // Import notes from a JSON file
+        function importNotes() {
+            console.log('Importing notes');
+            
+            // Create a file input element
+            const fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.accept = '.json';
+            
+            fileInput.onchange = function(e) {
+                const file = e.target.files[0];
+                if (!file) {
+                    console.log('No file selected');
+                    return;
+                }
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const fileContent = e.target.result;
+                        const importedNotes = JSON.parse(fileContent);
+                        
+                        // Validate the imported data structure
+                        if (!validateImportedNotes(importedNotes)) {
+                            alert('Invalid file format. Please select a valid notes file.');
+                            console.log('Invalid file format');
+                            return;
+                        }
+                        
+                        // Replace current notes with imported notes
+                        notes = importedNotes;
+                        saveNotes();
+                        updateNotesList();
+                        
+                        // Track that notes were imported from a file
+                        importedFromFile = true;
+                        // For browser security reasons, we can only get the file name, not the full path
+                        importedFilePath = file.name;
+                        
+                        console.log('Notes imported successfully');
+                    } catch (error) {
+                        console.error('Error importing notes:', error);
+                        alert('Error importing notes: ' + error.message);
+                    }
+                };
+                
+                reader.onerror = function() {
+                    console.error('Error reading file');
+                    alert('Error reading file');
+                };
+                
+                reader.readAsText(file);
+            };
+            
+            // Trigger file selection
+            fileInput.click();
+        }
+
+        // Export notes to a JSON file
+        function exportNotes() {
+            console.log('Exporting notes');
+            
+            // If notes were imported from a file, export back to that same file
+            if (importedFromFile && importedFilePath) {
+                // Try to use File System Access API if available
+                    if ('showSaveFilePicker' in self) {
+                        // Use File System Access API
+                        saveFileWithFileSystemAccessAPI(notes, importedFilePath);
+                    } else {
+                        // Fallback to traditional download approach
+                        const dataStr = JSON.stringify(notes, null, 2);
+                        saveDataToFile(dataStr, importedFilePath, 'application/json');
+                    }
+                    console.log('Notes exported successfully to original file');
+            } else {
+                // Create a default filename with timestamp
+                const fileName = 'notes-export-' + new Date().toISOString().slice(0, 10) + '.json';
+                
+                // Try to use File System Access API if available
+                    if ('showSaveFilePicker' in self) {
+                        // Use File System Access API
+                        saveFileWithFileSystemAccessAPI(notes, fileName);
+                    } else {
+                        // Fallback to traditional download approach
+                        const dataStr = JSON.stringify(notes, null, 2);
+                        saveDataToFile(dataStr, fileName, 'application/json');
+                    }
+                    console.log('Notes exported successfully');
+            }
+        }
+
+        // Helper function to save data using File System Access API
+        async function saveFileWithFileSystemAccessAPI(data, fileName) {
+            try {
+                // Create a Blob from the data
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                
+                // Create a file handle using the File System Access API
+                const fileHandle = await window.showSaveFilePicker({
+                    suggestedName: fileName,
+                    types: [{
+                        description: 'JSON files',
+                        accept: { 'application/json': ['.json'] }
+                    }]
+                });
+                
+                // Write the file
+                const writable = await fileHandle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+                
+                console.log('File saved successfully using File System Access API');
+            } catch (error) {
+                console.error('Error saving file with File System Access API:', error);
+                // Fallback to traditional download approach
+                const dataStr = JSON.stringify(data, null, 2);
+                saveDataToFile(dataStr, fileName, 'application/json');
+            }
+        }
+
+        // Helper function to save data to a file
+        function saveDataToFile(data, filename, type) {
+            // 1. Create a Blob object from the data
+            const blob = new Blob([data], { type: type });
+
+            // 2. Create a URL for the Blob object
+            const url = URL.createObjectURL(blob);
+
+            // 3. Create a temporary anchor element
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename; // Suggests a filename to the browser
+
+            // 4. Append anchor to body, click it, and remove it
+            // Appending to the body helps ensure the click event works in all browsers
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+
+            // 5. Revoke the object URL to free up memory
+            URL.revokeObjectURL(url);
+        }
+
+        // Validate imported notes structure
+        function validateImportedNotes(importedNotes) {
+            if (!importedNotes || typeof importedNotes !== 'object') {
+                return false;
+            }
+            
+            // Check that each note has the required properties
+            for (const [key, note] of Object.entries(importedNotes)) {
+                if (typeof note !== 'object' || note === null) {
+                    return false;
+                }
+                if (typeof note.title !== 'string' || typeof note.content !== 'string') {
+                    return false;
+                }
+                if (!Array.isArray(note.history)) {
+                    return false;
+                }
+            }
+            
+            return true;
         }
 
         // Handle input in edit panel for auto-save
