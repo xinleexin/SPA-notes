@@ -247,6 +247,12 @@
                 saveNotes();
             }
             console.log('Notes loaded:', notes);
+            
+            // Automatically select the first note if notes exist
+            if (Object.keys(notes).length > 0 && !currentNoteId) {
+                const firstNoteId = Object.keys(notes)[0];
+                selectNote(firstNoteId);
+            }
         }
 
         // Save notes to localStorage
@@ -613,24 +619,35 @@
             if (notes[noteId]) {
                 editContent.value = notes[noteId].content;
                 lastSavedContent = notes[noteId].content;
-                currentView = 'source';
-                toggleViewBtn.textContent = 'Show';
+                checkThePreviewMode();
             }
         }
 
         function editToggleView() {
             if (currentView === 'source') {
+                currentView = 'preview';
+            } else {
+                currentView = 'source';
+            }
+            checkThePreviewMode();
+        }
+
+        function checkThePreviewMode() {
+            if (currentView === 'source') {
                 // Show preview - using marked.js for comprehensive markdown rendering
                 const markdownContent = marked.parse(editContent.value);
                 
-                editContent.style.display = 'none';
-                const previewDiv = document.createElement('div');
-                previewDiv.className = 'markdown-view';
-                previewDiv.id = 'markdownPreview';
+                // Reuse existing preview div or create new one
+                let previewDiv = document.getElementById('markdownPreview');
+                if (!previewDiv) {
+                    previewDiv = document.createElement('div');
+                    previewDiv.className = 'markdown-view';
+                    previewDiv.id = 'markdownPreview';
+                    editPanel.appendChild(previewDiv);
+                }
                 previewDiv.innerHTML = markdownContent;
-                editPanel.appendChild(previewDiv);
+                editContent.style.display = 'none';
                 toggleViewBtn.textContent = 'Source';
-                currentView = 'preview';
                 
                 // Hide save button when preview is shown
                 saveBtn.style.display = 'none';
@@ -642,7 +659,6 @@
                 }
                 editContent.style.display = 'block';
                 toggleViewBtn.textContent = 'Show';
-                currentView = 'source';
                 
                 // Show save button when source is shown
                 saveBtn.style.display = 'block';
@@ -769,6 +785,8 @@
                 editContent.value = notes[noteId].history[versionIndex].content;
                 lastSavedContent = notes[noteId].history[versionIndex].content;
             }
+
+            checkThePreviewMode();
         }
 
         function showHistoryContextMenu(event, noteId, versionId) {
