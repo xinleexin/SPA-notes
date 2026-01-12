@@ -2,7 +2,8 @@
 
 ## Overview
 This is a single-page application (SPA) for managing markdown notes with import/export functionality. The application runs entirely in the browser using HTML, CSS, and JavaScript with no backend services.
-* focus on coding instead of chatting or explain how to do it
+* focus on coding instead of chatting or explain too much how to do it, or what to do
+* the dev environement is on windows, so use powershell equialent command for file operations instead of `sed` command from linux
 * generate high quality code with comments for other AI/Human to read
 * add logging to help debug and using **always** use TDD apporach to make sure unit/function working fine. For issue, retry **3** times for different options. if still not working, stop and give recommendations for human
 * for testing, simulate brower, and use dedicated test.html file to including test cases for the javascript functions 
