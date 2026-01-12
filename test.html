@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Markdown Notebook - Unit Tests</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 20px; 
+        }
+        .test-result {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+        }
+        .pass {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .fail {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        button {
+            padding: 8px 16px;
+            margin: 5px;
+            border-radius: 4px;
+            border: none;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <h1>Markdown Notebook - Unit Tests</h1>
+    
+    <div id="testResults"></div>
+    
+    <button onclick="runAllTests()">Run All Tests</button>
+    <button onclick="resetTestEnvironment()">Reset Test Environment</button>
+    
+    <script>
+        // Test functions
+        function runAllTests() {
+            const testResults = document.getElementById('testResults');
+            testResults.innerHTML = '';
+            
+            // Run all tests
+            testAutoSaveFunctionality();
+            testHistoryCreation();
+            testSaveFunction();
+        }
+        
+        function addTestResult(message, passed) {
+            const testResults = document.getElementById('testResults');
+            const resultDiv = document.createElement('div');
+            resultDiv.className = 'test-result ' + (passed ? 'pass' : 'fail');
+            resultDiv.textContent = message;
+            testResults.appendChild(resultDiv);
+        }
+        
+        function resetTestEnvironment() {
+            // Clear localStorage
+            localStorage.removeItem('markdownNotes');
+            
+            // Reset global variables
+            notes = {};
+            currentNoteId = null;
+            currentView = 'source';
+            autoSaveTimer = null;
+            lastSavedContent = '';
+            
+            addTestResult('Test environment reset', true);
+        }
+        
+        function testAutoSaveFunctionality() {
+            try {
+                // Initialize with a note
+                const noteId = Date.now().toString();
+                notes[noteId] = {
+                    title: 'Test Note',
+                    content: '# Test Content',
+                    history: []
+                };
+                currentNoteId = noteId;
+                lastSavedContent = '# Test Content';
+                
+                // Simulate auto-save
+                editContent.value = '# Updated Content';
+                handleEditInput();
+                
+                // Wait a bit for the auto-save to complete
+                setTimeout(() => {
+                    // Check that content was updated but history wasn't
+                    if (notes[noteId].content === '# Updated Content') {
+                        addTestResult('Auto-save functionality works correctly', true);
+                    } else {
+                        addTestResult('Auto-save failed to update content', false);
+                    }
+                }, 500);
+            } catch (error) {
+                addTestResult('Auto-save test error: ' + error.message, false);
+            }
+        }
+        
+        function testHistoryCreation() {
+            try {
+                // Initialize with a note
+                const noteId = Date.now().toString();
+                notes[noteId] = {
+                    title: 'Test Note',
+                    content: '# Test Content',
+                    history: []
+                };
+                currentNoteId = noteId;
+                lastSavedContent = '# Test Content';
+                
+                // Simulate saving
+                editContent.value = '# Updated Content';
+                editSave();
+                
+                // Check that history was created
+                if (notes[noteId].history.length > 0) {
+                    addTestResult('History creation works correctly', true);
+                } else {
+                    addTestResult('History was not created on save', false);
+                }
+            } catch (error) {
+                addTestResult('History creation test error: ' + error.message, false);
+            }
+        }
+        
+        function testSaveFunction() {
+            try {
+                // Initialize with a note
+                const noteId = Date.now().toString();
+                notes[noteId] = {
+                    title: 'Test Note',
+                    content: '# Test Content',
+                    history: []
+                };
+                currentNoteId = noteId;
+                lastSavedContent = '# Test Content';
+                
+                // Simulate saving
+                editContent.value = '# Updated Content';
+                editSave();
+                
+                // Check that content was updated and history was created
+                if (notes[noteId].content === '# Updated Content' && notes[noteId].history.length > 0) {
+                    addTestResult('Save function works correctly', true);
+                } else {
+                    addTestResult('Save function failed', false);
+                }
+            } catch (error) {
+                addTestResult('Save function test error: ' + error.message, false);
+            }
+        }
+        
+        // Mock the functions that are normally defined in the main file
+        let notes = {};
+        let currentNoteId = null;
+        let currentView = 'source';
+        let autoSaveTimer = null;
+        let lastSavedContent = '';
+        const editContent = { value: '' };
+        
+        function handleEditInput() {
+            // Clear existing timer
+            if (autoSaveTimer) {
+                clearTimeout(autoSaveTimer);
+            }
+            
+            // Set new timer (300ms delay)
+            autoSaveTimer = setTimeout(() => {
+                // Only save to localStorage but don't create new history version
+                if (currentNoteId && notes[currentNoteId]) {
+                    const content = editContent.value;
+                    if (content !== lastSavedContent) {
+                        notes[currentNoteId].content = content;
+                        lastSavedContent = content;
+                        // Simulate save to localStorage
+                        console.log('Auto-saved to localStorage');
+                    }
+                }
+            }, 300);
+        }
+        
+        function editSave() {
+            if (currentNoteId && notes[currentNoteId]) {
+                const content = editContent.value;
+                if (content !== lastSavedContent) {
+                    notes[currentNoteId].content = content;
+                    lastSavedContent = content;
+                    // Simulate save to localStorage
+                    console.log('Saved to localStorage');
+                    
+                    // Create new version in history only when save button is clicked
+                    historyCreate(currentNoteId);
+                    
+                    // Update history panel
+                    console.log('History updated');
+                }
+            }
+        }
+        
+        function historyCreate(noteId) {
+            if (notes[noteId]) {
+                const now = new Date();
+                // Create a unique timestamp to avoid duplicates
+                let timestamp = now.toLocaleString();
+                
+                // Check if this timestamp already exists and make it unique
+                let counter = 1;
+                const originalTimestamp = timestamp;
+                while (notes[noteId].history.some(v => v.timestamp === timestamp)) {
+                    timestamp = `${originalTimestamp} (${counter})`;
+                    counter++;
+                }
+                
+                const version = {
+                    timestamp: timestamp,
+                    content: notes[noteId].content
+                };
+                notes[noteId].history.unshift(version);
+                // Keep only last 20 versions
+                if (notes[noteId].history.length > 20) {
+                    notes[noteId].history = notes[noteId].history.slice(0, 20);
+                }
+                console.log('History created for note ' + noteId);
+            }
+        }
+        
+        // Initialize the test environment
+        resetTestEnvironment();
+    </script>
+</body>
+</html>

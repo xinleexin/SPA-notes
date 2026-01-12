@@ -158,6 +158,11 @@
             padding-left: 10px;
             margin-left: 0;
         }
+        .empty-state {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
     </style>
 </head>
 <body>
@@ -283,7 +288,15 @@
             
             // Set new timer (300ms delay)
             autoSaveTimer = setTimeout(() => {
-                editSave();
+                // Only save to localStorage but don't create new history version
+                if (currentNoteId && notes[currentNoteId]) {
+                    const content = editContent.value;
+                    if (content !== lastSavedContent) {
+                        notes[currentNoteId].content = content;
+                        lastSavedContent = content;
+                        saveNotes();
+                    }
+                }
             }, 300);
         }
 
@@ -346,6 +359,15 @@
 
         function updateNotesList() {
             notesList.innerHTML = '';
+            
+            // Show empty state if no notes
+            if (Object.keys(notes).length === 0) {
+                const emptyState = document.createElement('div');
+                emptyState.className = 'empty-state';
+                emptyState.textContent = 'No notes yet. Create your first note!';
+                notesList.appendChild(emptyState);
+                return;
+            }
             
             for (const [noteId, note] of Object.entries(notes)) {
                 const div = document.createElement('div');
@@ -418,6 +440,9 @@
                 editPanel.appendChild(previewDiv);
                 toggleViewBtn.textContent = 'Source';
                 currentView = 'preview';
+                
+                // Hide save button when preview is shown
+                saveBtn.style.display = 'none';
             } else {
                 // Show source
                 const previewDiv = document.getElementById('markdownPreview');
@@ -427,14 +452,17 @@
                 editContent.style.display = 'block';
                 toggleViewBtn.textContent = 'Show';
                 currentView = 'source';
+                
+                // Show save button when source is shown
+                saveBtn.style.display = 'block';
             }
         }
 
         function editSave() {
             if (currentNoteId && notes[currentNoteId]) {
                 const content = editContent.value;
-                if (content !== lastSavedContent) {
-                    notes[currentNoteId].content = content;
+                // always save content regardless of if content is auto save or not
+                notes[currentNoteId].content = content;
                     lastSavedContent = content;
                     saveNotes();
                     
@@ -443,7 +471,6 @@
                     
                     // Update history panel
                     updateHistoryList();
-                }
             }
         }
 
@@ -500,7 +527,7 @@
                 
                 // Add current version
                 const currentDiv = document.createElement('div');
-                currentDiv.className = 'history-item';
+                currentDiv.className = 'history-item selected';
                 currentDiv.textContent = 'Current Version';
                 currentDiv.addEventListener('click', () => {
                     editContent.value = note.content;
@@ -572,7 +599,5 @@
         // Initialize the application when the page loads
         window.addEventListener('load', init);
     </script>
-</body>
-</html>
 </body>
 </html>
