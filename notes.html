@@ -319,6 +319,41 @@
                 console.log('Save button listener set');
             }
             
+            // Setup resize handle event listeners
+            const resizeHandle = document.getElementById('resizeHandle');
+            if (resizeHandle) {
+                let isResizing = false;
+                let startX;
+                let startWidth;
+                
+                resizeHandle.addEventListener('mousedown', function(e) {
+                    isResizing = true;
+                    startX = e.clientX;
+                    startWidth = notesPanel.offsetWidth;
+                    e.preventDefault();
+                });
+                
+                document.addEventListener('mousemove', function(e) {
+                    if (!isResizing) return;
+                    
+                    const newWidth = startWidth + (e.clientX - startX);
+                    // Ensure minimum width
+                    if (newWidth > 100 && newWidth < window.innerWidth * 0.8) {
+                        notesPanel.style.width = newWidth + 'px';
+                        // Adjust edit panel width to fill remaining space
+                        editPanel.style.width = (window.innerWidth - newWidth - resizeHandle.offsetWidth) + 'px';
+                    }
+                });
+                
+                document.addEventListener('mouseup', function() {
+                    isResizing = false;
+                });
+                
+                console.log('Resize handle event listeners set');
+            } else {
+                console.log('ERROR: resizeHandle not found');
+            }
+            
             // Hide context menu when clicking elsewhere
             document.addEventListener('click', (e) => {
                 if (e.target !== contextMenu && !contextMenu.contains(e.target)) {
@@ -636,7 +671,7 @@
             if (notes[noteId]) {
                 editContent.value = notes[noteId].content;
                 lastSavedContent = notes[noteId].content;
-                checkThePreviewMode();
+                updateForPreviewMode();
             }
         }
 
@@ -646,10 +681,11 @@
             } else {
                 currentView = 'source';
             }
-            checkThePreviewMode();
+            updateForPreviewMode();
         }
 
-        function checkThePreviewMode() {
+        function updateForPreviewMode() {
+            // if the currentView is preview, render the markdown preview in UX
             if (currentView === 'preview') {
                 // Show preview - using marked.js for comprehensive markdown rendering
                 const markdownContent = marked.parse(editContent.value);
@@ -803,7 +839,7 @@
                 lastSavedContent = notes[noteId].history[versionIndex].content;
             }
 
-            checkThePreviewMode();
+            updateForPreviewMode();
         }
 
         function showHistoryContextMenu(event, noteId, versionId) {
