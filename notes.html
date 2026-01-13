@@ -242,6 +242,7 @@
         let importedFromFile = false; // Track if notes were imported from a file
         let importedFilePath = ''; // Track the path of the imported file
         let debugMode = true; // Enable/disable console logs
+        let selectedHistoryItems = new Set(); // Track multiple selected history items
 
         // DOM Elements
         const notesPanel = document.getElementById('notesPanel');
@@ -823,13 +824,30 @@
                     const div = document.createElement('div');
                     div.className = 'history-item';
                     div.textContent = version.timestamp;
-                    div.addEventListener('click', () => {
-                        historyVersionSelect(currentNoteId, index);
+                    div.addEventListener('click', (e) => {
+                        // Handle multi-selection with Ctrl key
+                        if (e.ctrlKey || e.metaKey) {
+                            if (selectedHistoryItems.has(index)) {
+                                selectedHistoryItems.delete(index);
+                                div.classList.remove('selected');
+                            } else {
+                                selectedHistoryItems.add(index);
+                                div.classList.add('selected');
+                            }
+                        } else {
+                            // Single selection
+                            historyVersionSelect(currentNoteId, index);
+                        }
                     });
                     // Add right-click event listener for context menu
                     div.addEventListener('contextmenu', (e) => {
                         e.preventDefault();
-                        showHistoryContextMenu(e, currentNoteId, index);
+                        // If multiple items are selected, show delete option for all
+                        if (selectedHistoryItems.size > 0) {
+                            showBulkHistoryContextMenu(e, currentNoteId, index);
+                        } else {
+                            showHistoryContextMenu(e, currentNoteId, index);
+                        }
                     });
                     historyList.appendChild(div);
                 });
@@ -842,6 +860,9 @@
             historyItems.forEach(item => {
                 item.classList.remove('selected');
             });
+            
+            // Clear selected history items set
+            selectedHistoryItems.clear();
             
             // Select the clicked item
             if (versionIndex === 'current') {
@@ -997,6 +1018,35 @@
                 });
                 contextMenu.appendChild(deleteItem);
             }
+        }
+
+        // Show context menu for multiple selected history items
+        function showBulkHistoryContextMenu(event, noteId, versionId) {
+            contextMenu.style.display = 'block';
+            contextMenu.style.left = event.pageX + 'px';
+            contextMenu.style.top = event.pageY + 'px';
+            
+            // Clear existing menu items
+            contextMenu.innerHTML = '';
+            
+            // Delete option for all selected items
+            const deleteItem = document.createElement('div');
+            deleteItem.className = 'context-menu-item';
+            deleteItem.textContent = 'Delete Selected Versions';
+            deleteItem.addEventListener('click', () => {
+                if (confirm(`Are you sure you want to delete ${selectedHistoryItems.size} selected versions?`)) {
+                    // Delete all selected versions
+                    const sortedIndices = Array.from(selectedHistoryItems).sort((a, b) => b - a); // Sort descending to delete from end
+                    sortedIndices.forEach(index => {
+                        historyDelete(noteId, index);
+                    });
+                    // Clear selection after deletion
+                    selectedHistoryItems.clear();
+                }
+                contextMenu.style.display = 'none';
+                updateHistoryList();
+            });
+            contextMenu.appendChild(deleteItem);
         }
 
         // Initialize the application when the page loads
