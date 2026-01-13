@@ -104,6 +104,9 @@
             background-color: #f5f5f5;
             border-radius: 4px;
             cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
         }
         .history-item:hover {
             background-color: #e0e0e0;
@@ -137,6 +140,25 @@
         }
         .context-menu-item:hover {
             background-color: #f0f0f0;
+        }
+        .inline-rename-input {
+            width: calc(100% - 40px);
+            height: 100%;
+            border: none;
+            padding: 0 5px;
+            box-sizing: border-box;
+        }
+        .inline-rename-btn {
+            height: 100%;
+            width: 30px;
+            border: none;
+            background: #28a745;
+            color: white;
+            cursor: pointer;
+            margin-left: 5px;
+        }
+        .inline-rename-btn:hover {
+            background: #218838;
         }
         .markdown-content {
             margin: 0;
@@ -219,6 +241,7 @@
         let lastSavedContent = '';
         let importedFromFile = false; // Track if notes were imported from a file
         let importedFilePath = ''; // Track the path of the imported file
+        let debugMode = true; // Enable/disable console logs
 
         // DOM Elements
         const notesPanel = document.getElementById('notesPanel');
@@ -236,22 +259,22 @@
 
         // Initialize the application
         function init() {
-            console.log('Initializing application');
+            if (debugMode) console.log('Initializing application');
             loadNotes();
             updateNotesList();
             setupEventListeners();
-            console.log('Application initialized');
+            if (debugMode) console.log('Application initialized');
         }
 
         // Load notes from localStorage
         function loadNotes() {
-            console.log('Loading notes from localStorage');
+            if (debugMode) console.log('Loading notes from localStorage');
             const savedNotes = localStorage.getItem('markdownNotes');
             if (savedNotes) {
-                console.log('Found saved notes');
+                if (debugMode) console.log('Found saved notes');
                 notes = JSON.parse(savedNotes);
             } else {
-                console.log('No saved notes, creating default');
+                if (debugMode) console.log('No saved notes, creating default');
                 // Initialize with a default note if none exists
                 const defaultNoteId = Date.now().toString();
                 notes = {
@@ -263,7 +286,7 @@
                 };
                 saveNotes();
             }
-            console.log('Notes loaded:', notes);
+            if (debugMode) console.log('Notes loaded:', notes);
             
             // Automatically select the first note if notes exist
             if (Object.keys(notes).length > 0 && !currentNoteId) {
@@ -279,44 +302,44 @@
 
         // Setup event listeners
         function setupEventListeners() {
-            console.log('Setting up event listeners');
+            if (debugMode) console.log('Setting up event listeners');
             if (createNoteBtn) {
                 createNoteBtn.addEventListener('click', function() {
-                    console.log('Create note button clicked - inside event listener');
+                    if (debugMode) console.log('Create note button clicked - inside event listener');
                     notesAdd();
                 });
-                console.log('Create note button event listener set');
+                if (debugMode) console.log('Create note button event listener set');
             } else {
-                console.log('ERROR: createNoteBtn not found');
+                if (debugMode) console.log('ERROR: createNoteBtn not found');
             }
             
             if (importNotesBtn) {
                 importNotesBtn.addEventListener('click', importNotes);
-                console.log('Import notes button event listener set');
+                if (debugMode) console.log('Import notes button event listener set');
             } else {
-                console.log('ERROR: importNotesBtn not found');
+                if (debugMode) console.log('ERROR: importNotesBtn not found');
             }
             
             if (exportNotesBtn) {
                 exportNotesBtn.addEventListener('click', exportNotes);
-                console.log('Export notes button event listener set');
+                if (debugMode) console.log('Export notes button event listener set');
             } else {
-                console.log('ERROR: exportNotesBtn not found');
+                if (debugMode) console.log('ERROR: exportNotesBtn not found');
             }
             
             if (editContent) {
                 editContent.addEventListener('input', handleEditInput);
-                console.log('Edit content input listener set');
+                if (debugMode) console.log('Edit content input listener set');
             }
             
             if (toggleViewBtn) {
                 toggleViewBtn.addEventListener('click', editToggleView);
-                console.log('Toggle view button listener set');
+                if (debugMode) console.log('Toggle view button listener set');
             }
             
             if (saveBtn) {
                 saveBtn.addEventListener('click', editSave);
-                console.log('Save button listener set');
+                if (debugMode) console.log('Save button listener set');
             }
             
             // Setup resize handle event listeners
@@ -349,9 +372,9 @@
                     isResizing = false;
                 });
                 
-                console.log('Resize handle event listeners set');
+                if (debugMode) console.log('Resize handle event listeners set');
             } else {
-                console.log('ERROR: resizeHandle not found');
+                if (debugMode) console.log('ERROR: resizeHandle not found');
             }
             
             // Hide context menu when clicking elsewhere
@@ -360,12 +383,12 @@
                     contextMenu.style.display = 'none';
                 }
             });
-            console.log('Global click listener set');
+            if (debugMode) console.log('Global click listener set');
         }
 
         // Import notes from a JSON file
         function importNotes() {
-            console.log('Importing notes');
+            if (debugMode) console.log('Importing notes');
             
             // Create a file input element
             const fileInput = document.createElement('input');
@@ -375,7 +398,7 @@
             fileInput.onchange = function(e) {
                 const file = e.target.files[0];
                 if (!file) {
-                    console.log('No file selected');
+                    if (debugMode) console.log('No file selected');
                     return;
                 }
                 
@@ -388,7 +411,7 @@
                         // Validate the imported data structure
                         if (!validateImportedNotes(importedNotes)) {
                             alert('Invalid file format. Please select a valid notes file.');
-                            console.log('Invalid file format');
+                            if (debugMode) console.log('Invalid file format');
                             return;
                         }
                         
@@ -402,7 +425,7 @@
                         // For browser security reasons, we can only get the file name, not the full path
                         importedFilePath = file.name;
                         
-                        console.log('Notes imported successfully');
+                        if (debugMode) console.log('Notes imported successfully');
                     } catch (error) {
                         console.error('Error importing notes:', error);
                         alert('Error importing notes: ' + error.message);
@@ -423,7 +446,7 @@
 
         // Export notes to a JSON file
         function exportNotes() {
-            console.log('Exporting notes');
+            if (debugMode) console.log('Exporting notes');
             
             // If notes were imported from a file, export back to that same file
             if (importedFromFile && importedFilePath) {
@@ -436,7 +459,7 @@
                         const dataStr = JSON.stringify(notes, null, 2);
                         saveDataToFile(dataStr, importedFilePath, 'application/json');
                     }
-                    console.log('Notes exported successfully to original file');
+                    if (debugMode) console.log('Notes exported successfully to original file');
             } else {
                 // Create a default filename with timestamp
                 const fileName = 'notes-export-' + new Date().toISOString().slice(0, 10) + '.json';
@@ -450,7 +473,7 @@
                         const dataStr = JSON.stringify(notes, null, 2);
                         saveDataToFile(dataStr, fileName, 'application/json');
                     }
-                    console.log('Notes exported successfully');
+                    if (debugMode) console.log('Notes exported successfully');
             }
         }
 
@@ -474,7 +497,7 @@
                 await writable.write(blob);
                 await writable.close();
                 
-                console.log('File saved successfully using File System Access API');
+                if (debugMode) console.log('File saved successfully using File System Access API');
             } catch (error) {
                 console.error('Error saving file with File System Access API:', error);
                 // Fallback to traditional download approach
@@ -551,7 +574,7 @@
 
         // Notes panel functions
         function notesAdd() {
-            console.log('notesAdd function called');
+            if (debugMode) console.log('notesAdd function called');
             // Create new note with datetime title
             const now = new Date();
             const dateTimeString = now.toLocaleString();
@@ -561,11 +584,11 @@
                 content: '',
                 history: []
             };
-            console.log('Created note with ID:', noteId);
+            if (debugMode) console.log('Created note with ID:', noteId);
             saveNotes();
             updateNotesList();
             selectNote(noteId);
-            console.log('Note creation completed');
+            if (debugMode) console.log('Note creation completed');
         }
 
         function notesDelete(noteId) {
@@ -855,16 +878,109 @@
             renameItem.className = 'context-menu-item';
             renameItem.textContent = 'Rename';
             renameItem.addEventListener('click', () => {
-                const newName = prompt('Enter new name for the version:', 
-                    typeof versionId === 'string' ? 'Current Version' : notes[noteId].history[versionId].timestamp);
-                if (newName !== null && newName.trim() !== '') {
-                    if (typeof versionId === 'string' && versionId === 'current') {
-                        // For current version, we don't actually rename it, but we could update a note property
-                    } else {
-                        historyRename(noteId, versionId, newName);
-                    }
-                }
+                // Hide the context menu
                 contextMenu.style.display = 'none';
+                
+                // Find the history item element
+                const historyItems = historyList.querySelectorAll('.history-item');
+                let itemElement;
+                if (versionId === 'current') {
+                    itemElement = historyItems[0]; // First item is current version
+                } else {
+                    itemElement = historyItems[versionId + 1]; // +1 because of current version
+                }
+                
+                if (itemElement) {
+                    // Create inline rename UI
+                    const originalText = itemElement.textContent;
+                    itemElement.innerHTML = '';
+                    
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.value = originalText;
+                    input.className = 'inline-rename-input';
+                    input.style.width = '75%';
+                    input.style.height = '100%';
+                    input.style.border = 'none';
+                    input.style.padding = '0 5px';
+                    input.style.boxSizing = 'border-box';
+                    
+                    const saveBtn = document.createElement('button');
+                    saveBtn.textContent = 'Save';
+                    saveBtn.className = 'inline-rename-btn';
+                    saveBtn.style.height = '100%';
+                    saveBtn.style.width = '12%';
+                    saveBtn.style.border = 'none';
+                    saveBtn.style.background = '#28a745';
+                    saveBtn.style.color = 'white';
+                    saveBtn.style.cursor = 'pointer';
+                    saveBtn.style.marginLeft = '1%';
+                    
+                    const cancelBtn = document.createElement('button');
+                    cancelBtn.textContent = 'X';
+                    cancelBtn.className = 'inline-rename-btn';
+                    cancelBtn.style.height = '100%';
+                    cancelBtn.style.width = '12%';
+                    cancelBtn.style.border = 'none';
+                    cancelBtn.style.background = '#dc3545';
+                    cancelBtn.style.color = 'white';
+                    cancelBtn.style.cursor = 'pointer';
+                    cancelBtn.style.marginLeft = '1%';
+                    
+                    const buttonContainer = document.createElement('div');
+                    buttonContainer.style.display = 'flex';
+                    buttonContainer.style.alignItems = 'center';
+                    buttonContainer.style.height = '100%';
+                    buttonContainer.style.width = '100%';
+                    
+                    buttonContainer.appendChild(input);
+                    buttonContainer.appendChild(saveBtn);
+                    buttonContainer.appendChild(cancelBtn);
+                    
+                    itemElement.appendChild(buttonContainer);
+                    
+                    // Focus the input and select all text
+                    input.focus();
+                    input.select();
+                    
+                    // Handle save
+                    const saveHandler = () => {
+                        const newName = input.value.trim();
+                        if (newName !== '') {
+                            if (typeof versionId === 'string' && versionId === 'current') {
+                                // For current version, we don't actually rename it
+                            } else {
+                                historyRename(noteId, versionId, newName);
+                            }
+                        }
+                        // Update the history list to show the new text
+                        updateHistoryList();
+                    };
+                    
+                    // Handle cancel
+                    const cancelHandler = () => {
+                        // Update the history list to show the original text
+                        updateHistoryList();
+                    };
+                    
+                    // Add event listeners
+                    saveBtn.addEventListener('click', saveHandler);
+                    cancelBtn.addEventListener('click', cancelHandler);
+                    
+                    // Handle Enter and Escape keys
+                    input.addEventListener('keypress', (e) => {
+                        if (e.key === 'Enter') {
+                            saveHandler();
+                        } else if (e.key === 'Escape') {
+                            cancelHandler();
+                        }
+                    });
+                    
+                    // Handle blur (clicking outside)
+                    input.addEventListener('blur', () => {
+                        saveHandler();
+                    });
+                }
             });
             contextMenu.appendChild(renameItem);
             
