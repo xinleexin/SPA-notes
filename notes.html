@@ -210,6 +210,8 @@
 <body>
     <!-- Include marked.js for better markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex/dist/katex.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex/dist/katex.css">
     <div class="panel notes-panel" id="notesPanel">
         <button class="create-note-btn" id="createNoteBtn">Create Note</button>
         <div id="notesList"></div>
@@ -712,7 +714,10 @@
             // if the currentView is preview, render the markdown preview in UX
             if (currentView === 'preview') {
                 // Show preview - using marked.js for comprehensive markdown rendering
-                const markdownContent = marked.parse(editContent.value);
+                let markdownContent = marked.parse(editContent.value);
+                
+                // Render math formulas with KaTeX
+                markdownContent = renderMathWithKaTeX(markdownContent);
                 
                 // Reuse existing preview div or create new one
                 let previewDiv = document.getElementById('markdownPreview');
@@ -740,6 +745,47 @@
                 // Show save button when source is shown
                 saveBtn.style.display = 'block';
             }
+        }
+
+        // Function to render math formulas with KaTeX
+        function renderMathWithKaTeX(htmlContent) {
+            // Create a temporary element to work with the HTML
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = htmlContent;
+            
+            // Find all elements that contain math content
+            const mathElements = tempDiv.querySelectorAll('p, li, div');
+            
+            mathElements.forEach(element => {
+                const text = element.textContent;
+                // Look for inline math (single $) and display math (double $$)
+                if (text.includes('$') || text.includes('$$')) {
+                    // Replace $...$ with KaTeX inline math
+                    let content = element.innerHTML;
+                    content = content.replace(/\$(.*?)\$/g, (match, math) => {
+                        try {
+                            return katex.renderToString(math, { displayMode: false });
+                        } catch (error) {
+                            // If KaTeX rendering fails, return the original text
+                            return match;
+                        }
+                    });
+                    
+                    // Replace $$...$$ with KaTeX display math
+                    content = content.replace(/\$\$(.*?)\$\$/g, (match, math) => {
+                        try {
+                            return katex.renderToString(math, { displayMode: true });
+                        } catch (error) {
+                            // If KaTeX rendering fails, return the original text
+                            return match;
+                        }
+                    });
+                    
+                    element.innerHTML = content;
+                }
+            });
+            
+            return tempDiv.innerHTML;
         }
 
         function editSave() {
