@@ -80,6 +80,7 @@
             box-sizing: border-box;
             resize: none;
             font-family: monospace;
+            font-size: 14px;
         }
         .edit-toolbar {
             padding: 10px;
@@ -226,6 +227,8 @@
         <div class="edit-toolbar">
             <button class="edit-btn" id="toggleViewBtn">Show</button>
             <button class="edit-btn" id="saveBtn" title="Save as a new version">Save</button>
+            <button class="edit-btn" id="zoomInBtn" title="Zoom in">Zoom in</button>
+            <button class="edit-btn" id="zoomOutBtn" title="Zoom out">Zoom out</button>
         </div>
     </div>
     <div class="panel history-panel" id="historyPanel">
@@ -245,6 +248,10 @@
         let importedFilePath = ''; // Track the path of the imported file
         let debugMode = true; // Enable/disable console logs
         let selectedHistoryItems = new Set(); // Track multiple selected history items
+        const EDIT_ZOOM_MIN = 10;
+        const EDIT_ZOOM_MAX = 24;
+        const EDIT_ZOOM_STEP = 2;
+        let editFontSizePx = 14; // Edit panel text size; load from localStorage in init
 
         // DOM Elements
         const notesPanel = document.getElementById('notesPanel');
@@ -256,6 +263,8 @@
         const editContent = document.getElementById('editContent');
         const toggleViewBtn = document.getElementById('toggleViewBtn');
         const saveBtn = document.getElementById('saveBtn');
+        const zoomInBtn = document.getElementById('zoomInBtn');
+        const zoomOutBtn = document.getElementById('zoomOutBtn');
         const historyPanel = document.getElementById('historyPanel');
         const historyList = document.getElementById('historyList');
         const contextMenu = document.getElementById('contextMenu');
@@ -264,9 +273,44 @@
         function init() {
             if (debugMode) console.log('Initializing application');
             loadNotes();
+            loadEditZoom();
             updateNotesList();
             setupEventListeners();
+            applyEditZoom();
             if (debugMode) console.log('Application initialized');
+        }
+
+        // Load edit panel zoom level from localStorage
+        function loadEditZoom() {
+            const saved = localStorage.getItem('editFontSizePx');
+            if (saved !== null) {
+                const n = parseInt(saved, 10);
+                if (!isNaN(n) && n >= EDIT_ZOOM_MIN && n <= EDIT_ZOOM_MAX) editFontSizePx = n;
+            }
+        }
+
+        // Apply current zoom to edit textarea and preview (if visible)
+        function applyEditZoom() {
+            const size = editFontSizePx + 'px';
+            editContent.style.fontSize = size;
+            const previewDiv = document.getElementById('markdownPreview');
+            if (previewDiv) previewDiv.style.fontSize = size;
+        }
+
+        function editZoomIn() {
+            if (editFontSizePx < EDIT_ZOOM_MAX) {
+                editFontSizePx = Math.min(EDIT_ZOOM_MAX, editFontSizePx + EDIT_ZOOM_STEP);
+                localStorage.setItem('editFontSizePx', String(editFontSizePx));
+                applyEditZoom();
+            }
+        }
+
+        function editZoomOut() {
+            if (editFontSizePx > EDIT_ZOOM_MIN) {
+                editFontSizePx = Math.max(EDIT_ZOOM_MIN, editFontSizePx - EDIT_ZOOM_STEP);
+                localStorage.setItem('editFontSizePx', String(editFontSizePx));
+                applyEditZoom();
+            }
         }
 
         // Load notes from localStorage
@@ -343,6 +387,13 @@
             if (saveBtn) {
                 saveBtn.addEventListener('click', editSave);
                 if (debugMode) console.log('Save button listener set');
+            }
+            
+            if (zoomInBtn) {
+                zoomInBtn.addEventListener('click', editZoomIn);
+            }
+            if (zoomOutBtn) {
+                zoomOutBtn.addEventListener('click', editZoomOut);
             }
             
             // Setup resize handle event listeners
@@ -728,6 +779,7 @@
                     editPanel.appendChild(previewDiv);
                 }
                 previewDiv.innerHTML = markdownContent;
+                applyEditZoom(); // Apply current zoom to preview
                 editContent.style.display = 'none';
                 toggleViewBtn.textContent = 'Source';
                 
