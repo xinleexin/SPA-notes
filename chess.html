@@ -318,6 +318,66 @@
                 flex: 1;
             }
         }
+
+        /* Chess Clock Display */
+        .chess-clock {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            margin-bottom: 15px;
+            background: #ecf0f1;
+            border-radius: 8px;
+            font-family: monospace;
+        }
+
+        .player-time {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px 20px;
+            min-width: 60px;
+            background: #fff;
+            border-radius: 4px;
+            box-shadow: inset 0 0 5px rgba(0,0,0,0.1);
+        }
+
+        .player-time.white {
+            border-bottom: 3px solid #ecf0f1;
+        }
+
+        .player-time.black {
+            border-top: 3px solid #95a5a6;
+        }
+
+        .player-name {
+            font-size: 0.8rem;
+            color: #7f8c8d;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .time-display {
+            font-size: 1.3rem;
+            color: #2c3e50;
+            font-weight: bold;
+        }
+
+        .player-time.active {
+            background: linear-gradient(135deg, #f1c40f 0%, #d4ac0d 100%);
+            box-shadow:
+                inset 2px 2px 8px rgba(255, 255, 255, 0.6),
+                0 0 10px rgba(241, 196, 15, 0.7);
+        }
+
+        .player-time.active.white {
+            border-bottom-color: #f1c40f;
+        }
+
+        .player-time.active.black {
+            border-top-color: #d4ac0d;
+        }
     </style>
 </head>
 <body>
@@ -332,6 +392,24 @@
         <div class="resize-handle" id="resizeHandle"></div>
 
         <div class="panel history-panel">
+            <h3>Move History</h3>
+            <!-- Chess Clock Display -->
+            <div id="chessClock" class="chess-clock" style="display: none;">
+                <div id="whiteTimeDisplay" class="player-time white active">
+                    <span class="player-name">White</span>
+                    <span id="currentWhiteTime" class="time-display">00:00</span>
+                    <span id="totalWhiteTime" class="time-display" style="font-size: 1rem; margin-top: 4px;">00:00</span>
+                </div>
+                <!-- Hide black clock when playing against bot -->
+                <div id="blackClockContainer">
+                    <div id="blackTimeDisplay" class="player-time black">
+                        <span class="player-name">Black</span>
+                        <span id="currentBlackTime" class="time-display">00:00</span>
+                        <span id="totalBlackTime" class="time-display" style="font-size: 1rem; margin-top: 4px;">00:00</span>
+                    </div>
+                </div>
+            </div>
+
             <h3>Move History</h3>
             <div id="moveHistoryList">
                 <p style="color: #7f8c8d; text-align: center; padding: 20px;">No moves yet</p>
@@ -362,7 +440,7 @@
     </div>
 
     <script>
-        // ============================================
+// ============================================
         // Chess Game SPA - State Management
         // ============================================
 
@@ -385,7 +463,14 @@
         let lastMove = null; // {from: {row, col}, to: {row, col}}
         let whiteKingPos = {row: 7, col: 4};
         let blackKingPos = {row: 0, col: 4};
-        let botDifficulty = 'medium'; // 'easy', 'medium', or 'hard'
+        let botDifficulty = 'medium'; // 'easy', 'medium', 'hard', or 'none'
+
+        // Move Timer State
+        let currentTime = { white: 0, black: 0 }; // Accumulated time per player (in seconds)
+        let currentTurnTime = null; // Seconds for current turn (counting up)
+        let timerInterval = null; // setInterval reference
+
+        // DOM Elements
 
         // DOM Elements
         const chessBoard = document.getElementById('chessBoard');
@@ -415,6 +500,13 @@
             setupEventListeners();
             renderBoard();
             updateStatus();
+            // Start timer for the game
+            if (botDifficulty === 'none') {
+                startTimer();
+            } else {
+                // Hide black clock when playing against bot
+                document.getElementById('blackClockContainer').style.display = 'none';
+            }
             renderMoveHistory();
         }
 
@@ -480,8 +572,15 @@
             });
 
             // Bot difficulty dropdown
+            const blackClockContainer = document.getElementById('blackClockContainer');
             document.getElementById('botDifficultySelect').addEventListener('change', (e) => {
                 botDifficulty = e.target.value;
+                // Hide black clock when playing against bot, show it for human vs human
+                if (botDifficulty !== 'none') {
+                    blackClockContainer.style.display = 'none';
+                } else {
+                    blackClockContainer.style.display = 'block';
+                }
                 autoSave();
             });
         }
@@ -505,9 +604,21 @@
             lastMove = null;
             whiteKingPos = {row: 7, col: 4};
             blackKingPos = {row: 0, col: 4};
+
+            // Reset timer state
+            currentTime = { white: 0, black: 0 };
+            currentTurnTime = null;
+            stopTimer();
+
+            // Hide black clock when playing against bot
+            const blackClockContainer = document.getElementById('blackClockContainer');
+            if (botDifficulty !== 'none') {
+                blackClockContainer.style.display = 'none';
+            } else {
+                blackClockContainer.style.display = 'block';
+            }
+
             autoSave();
-            renderBoard();
-            updateStatus();
             renderMoveHistory();
         }
 
@@ -525,10 +636,22 @@
             lastMove = null;
             whiteKingPos = {row: 7, col: 4};
             blackKingPos = {row: 0, col: 4};
+
+            // Reset timer state
+            currentTime = { white: 0, black: 0 };
+            currentTurnTime = null;
+            stopTimer();
+
+            // Hide black clock when playing against bot
+            const blackClockContainer2 = document.getElementById('blackClockContainer');
+            if (botDifficulty !== 'none') {
+                blackClockContainer2.style.display = 'none';
+            } else {
+                blackClockContainer2.style.display = 'block';
+            }
+
             autoSave();
             renderBoard();
-            updateStatus();
-            renderMoveHistory();
         }
 
         function initializeBoard() {
@@ -1077,7 +1200,10 @@
             deselectAll();
             renderMoveHistory();
 
-            // Trigger bot move if it's black's turn
+            // Start timer for the new player (unless using bot)
+            startTimer();
+
+            // Trigger bot move if it's black's turn and not disabled
             if (currentTurn === 'black' && gameActive) {
                 setTimeout(botMakeMove, 500);
             }
@@ -1279,7 +1405,9 @@
                 lastMove,
                 whiteKingPos,
                 blackKingPos,
-                botDifficulty
+                botDifficulty,
+                currentTime,
+                currentTurnTime
             };
             localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
         }
@@ -1298,7 +1426,9 @@
                 lastMove,
                 whiteKingPos,
                 blackKingPos,
-                botDifficulty
+                botDifficulty,
+                currentTime,
+                currentTurnTime
             };
             const jsonString = JSON.stringify(state, null, 2);
             const blob = new Blob([jsonString], { type: 'application/json' });
@@ -1400,14 +1530,96 @@
             whiteKingPos = state.whiteKingPos;
             blackKingPos = state.blackKingPos;
             botDifficulty = state.botDifficulty !== undefined ? state.botDifficulty : 'medium';
+            currentTime = state.currentTime || { white: 0, black: 0 };
+            currentTurnTime = null;
+            stopTimer(); // Clear any running timer from saved game
+
             // Update dropdown to reflect state
             const dropdown = document.getElementById('botDifficultySelect');
             if (dropdown) dropdown.value = botDifficulty;
         }
 
         // ============================================
+        // Move Timer Functions
+        
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function startTimer() {
+            stopTimer(); // Clear any existing timer
+            currentTurnTime = 0;
+
+            // Show chess clock UI
+            const chessClock = document.getElementById('chessClock');
+            chessClock.style.display = 'flex';
+
+            // Hide black clock when playing against bot
+            if (botDifficulty !== 'none') {
+                document.getElementById('blackClockContainer').style.display = 'none';
+            }
+
+            updateChessClockDisplay();
+
+            timerInterval = setInterval(() => {
+                if (currentTurnTime !== null) {
+                    currentTurnTime++;
+
+                    const playerKey = currentTurn === 'white' ? 'currentWhiteTime' : 'currentBlackTime';
+                    document.getElementById(playerKey).textContent = formatTime(currentTurnTime);
+
+                    // Update active player highlight
+                    updateChessClockActive();
+                }
+            }, 1000);
+        }
+
+        function stopTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+
+            // Accumulate time for current turn before switching
+            if (currentTurnTime !== null && gameActive) {
+                const playerKey = currentTurn === 'white' ? 'black' : 'white';
+                currentTime[playerKey] += currentTurnTime;
+
+                // Update total time displays
+                document.getElementById('totalWhiteTime').textContent = formatTime(currentTime.white);
+                document.getElementById('totalBlackTime').textContent = formatTime(currentTime.black);
+            }
+
+            currentTurnTime = null;
+        }
+
+        function updateChessClockDisplay() {
+            if (timerInterval) {
+                const whiteTotal = currentTime.white + (currentTurn === 'white' ? currentTurnTime : 0);
+                const blackTotal = currentTime.black + (currentTurn === 'black' ? currentTurnTime : 0);
+
+                document.getElementById('totalWhiteTime').textContent = formatTime(whiteTotal);
+                document.getElementById('totalBlackTime').textContent = formatTime(blackTotal);
+            }
+        }
+
+        function updateChessClockActive() {
+            const whiteDisplay = document.getElementById('whiteTimeDisplay');
+            const blackDisplay = document.getElementById('blackTimeDisplay');
+
+            if (currentTurn === 'white') {
+                whiteDisplay.classList.add('active');
+                blackDisplay.classList.remove('active');
+            } else {
+                blackDisplay.classList.add('active');
+                whiteDisplay.classList.remove('active');
+            }
+        }
+
+// ============================================
         // Bot AI (Medium Difficulty)
-        // ============================================
 
         const pieceValues = {
             p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000

@@ -1,10 +1,11 @@
 # CLAUDE.md
-
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Overview
+This is a Single Page Application (SPA) for managing markdown notes with version history, built as pure client-side HTML/JS with no build process. The main application is `notes.html`. There's also a chess SPA (`chess.html`) with bot difficulty levels.
 
-This is a Single Page Application (SPA) for managing markdown notes with version history, built as pure client-side HTML/JS with no build process. The main application is `notes.html`.
+## Development Environment
+You are **powershell** expert and running on Windows 11. Utilize **powershell** for file operations and etc.
 
 ## Key Commands
 
@@ -13,10 +14,11 @@ This is a Single Page Application (SPA) for managing markdown notes with version
 | Run the app | Open `notes.html` directly in a browser |
 | Run tests | Open `test.html` in a browser and click "Run All Tests" |
 | Test import/export | Open `import-export-test.html` if available |
+| Play Chess | Open `chess.html` in a browser |
 
 ## Architecture
 
-### State Management
+### State Management (Notes SPA)
 
 - **`notes`**: Object `{ noteId: { title, content, history: [{timestamp, content}] } }`
 - **`currentNoteId`**: ID of the currently selected note (null if none)
@@ -28,13 +30,22 @@ This is a Single Page Application (SPA) for managing markdown notes with version
 
 **Persistence**: All state persists to `localStorage` under key `'markdownNotes'`. Edit zoom level stored separately under `'editFontSizePx'`.
 
-### Data Flow
+### Chess SPA State Management
+
+- **`board`**: 8x8 array of `{type, color}` objects or null
+- **`currentTurn`**: 'white' or 'black'
+- **`botDifficulty`**: 'easy', 'medium', or 'hard'
+- **`selectedSquare`**, **`legalMoves`**, **`moveHistory`**, etc.
+
+**Persistence**: Chess state persists to `localStorage` under key `'chessGame'`.
+
+### Data Flow (Notes)
 
 1. **Initialization**: `init()` → `loadNotes()` → `updateNotesList()` → `setupEventListeners()`
 2. **User actions** → update state → `saveNotes()` → `update*()` to refresh DOM
 3. **No framework**; direct DOM manipulation with vanilla JS
 
-### Key Components
+### Key Components (Notes)
 
 | Component | Description |
 |-----------|-------------|
@@ -42,12 +53,14 @@ This is a Single Page Application (SPA) for managing markdown notes with version
 | **Edit panel** (60% width) | Textarea for markdown editing; toggle to preview with `marked.js` + `KaTeX` |
 | **History panel** (20% width) | Version history with restore/delete/rename; supports Ctrl+multi-select |
 | **Resize handle** | Draggable divider for panel width adjustment |
-| **Context menu** | Shared dropdown for note and history item operations |
 
-### External Dependencies (CDN)
+### Chess SPA Components
 
-- **marked.js**: Markdown parsing and HTML rendering
-- **KaTeX**: Math formula rendering (`$...$` inline, `$$...$$` display)
+| Component | Description |
+|-----------|-------------|
+| **Board panel** | 8x8 grid with chess pieces, coordinates |
+| **History panel** | Move history list, difficulty dropdown (Easy/Medium/Hard) |
+| **Buttons** | New Game, Save/Load Game, Reset Position |
 
 ## Testing Approach
 
@@ -60,54 +73,81 @@ This is a Single Page Application (SPA) for managing markdown notes with version
 6. Manual UI sanity check
 
 **Test patterns:**
-- **Unit**: test pure functions (`validateImportedNotes`, `historyCreate`, `editSave` with mock data)
-- **Integration**: test DOM + state interaction with mock state (see `test.html`)
-- **E2E**: browser automation for user flows (create → edit → save → restore)
+- **Unit**: test pure functions with mock data
+- **Integration**: test DOM + state interaction
+- **E2E**: browser automation for user flows
 
-**Test commands**:
-- Run all tests: `runAllTests()` in test.html console
-- Reset test environment: `resetTestEnvironment()` in test.html console
-
-## Important Patterns
+## Important Patterns (Notes)
 
 | Pattern | Implementation |
 |---------|----------------|
-| **Debounced auto-save** | 300ms after input; updates content only (no history version) |
+| **Debounced auto-save** | 300ms after input; updates content only |
 | **Save button** | Creates new history version + persists content |
-| **History limit** | Keeps last 20 versions per note (oldest dropped) |
-| **Context menu** | Shared element at cursor position; hidden on document click |
-| **Resize handle** | mousedown→mousemove→mouseup pattern for panel width adjustment |
-| **Import/export** | File System Access API with blob download fallback |
-| **Math rendering** | KaTeX processes rendered HTML for `$...$` (inline) and `$$...$$` (display) |
+| **History limit** | Keeps last 20 versions per note |
+| **Context menu** | Shared element at cursor position |
 
-## Key Functions Reference
+## Important Patterns (Chess)
+
+| Pattern | Implementation |
+|---------|----------------|
+| **Bot difficulty levels** | Easy (random), Medium (2-ply), Hard (3-ply) |
+| **Piece-square tables** | Positional bonuses for better play |
+| **Minimax search** | Bot evaluates positions after opponent's response |
+| **Auto-promotion** | Bot auto-queues pawns on last rank |
+
+## Chess Bot Difficulty Levels
+
+### Easy (0-ply - Random)
+- Picks random legal moves
+- Slight randomness factor for variety
+
+### Medium (2-ply with piece-square tables)
+- Current 2-ply search implementation
+- Evaluates position after each initial move
+- Uses piece-square tables for positional awareness
+
+### Hard (3-ply minimax)
+- For each initial white move:
+  - Simulate the move
+  - Find black's best response (minimize white's score)
+  - Evaluate resulting position after white's second move
+- Considers deeper calculation and threat blocking
+
+## Key Functions Reference (Notes)
 
 ### Notes Panel Functions
 - `notesAdd()` - Create new note with timestamped title
 - `notesDelete(noteId)` - Delete note with confirmation
 - `notesRename(noteId)` - Rename note via prompt
 - `selectNote(noteId)` - Select note and load into editor
-- `updateNotesList()` - Re-render notes list with current selection
 
 ### Edit Panel Functions
 - `editLoad(noteId)` - Load note content into editor
 - `editToggleView()` - Toggle between source/preview
 - `editSave()` - Save content and create history version
 - `handleEditInput()` - Debounced auto-save handler
-- `editZoomIn/Out()` - Adjust font size in editor
 
 ### History Panel Functions
 - `historyCreate(noteId)` - Create new version from current content
 - `historyDelete(noteId, versionId)` - Delete specific version
 - `historyRename(noteId, versionId, newName)` - Rename version timestamp
 - `updateHistoryList()` - Re-render history list with current version highlighted
-- `historyVersionSelect(noteId, versionIndex)` - Load selected version into editor
 
 ### Utility Functions
 - `validateImportedNotes(data)` - Verify imported notes structure
 - `renderMathWithKaTeX(html)` - Process math formulas in rendered HTML
-- `saveFileWithFileSystemAccessAPI(data, fileName)` - Modern file save API
-- `saveDataToFile(data, filename, type)` - Fallback blob download
+
+## Chess SPA Key Functions
+
+### Bot AI Functions
+- `botMakeMove()` - Select and execute bot move based on difficulty
+- `evaluateBoard(board, botColor)` - Score position using piece values + positional tables
+- `getAllLegalMovesForColor(color)` - Get all legal moves for a color
+- `makeMoveOnBoard(from, to)` / `undoMoveOnBoard(savedState)` - Simulate/undo moves for search
+
+### State Persistence
+- `autoSave()` - Save to localStorage
+- `saveGame()` / `loadGame()` - File-based export/import with File System Access API fallback
 
 ## Project-Specific Best Practices
 
