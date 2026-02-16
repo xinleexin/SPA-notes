@@ -303,6 +303,13 @@
             editFontSizePx = storageManager.loadZoom(EDIT_ZOOM_MIN, EDIT_ZOOM_MAX, 14);
             updateNotesList();
             setupEventListeners();
+
+            // Automatically select the first note if no currentNoteId is set
+            if (Object.keys(notes).length > 0 && !currentNoteId) {
+                const firstNoteId = Object.keys(notes)[0];
+                selectNote(firstNoteId);
+            }
+
             applyEditZoom();
             log('Application initialized');
         }
