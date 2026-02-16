@@ -618,8 +618,15 @@
                 blackClockContainer.style.display = 'block';
             }
 
+            // Start timer for human vs human mode (No Bot)
+            if (botDifficulty === 'none') {
+                startTimer();
+            }
+
             autoSave();
+            renderBoard();
             renderMoveHistory();
+            updateStatus();
         }
 
         function resetToStartingPosition() {
@@ -1888,7 +1895,19 @@
             const botColor = 'black';
             const allMoves = getAllLegalMovesForColor(botColor);
 
-            if (allMoves.length === 0) return; // No moves possible
+            if (allMoves.length === 0) {
+                // Bot has no legal moves - check for checkmate or stalemate
+                if (isCheck(botColor)) {
+                    gameActive = false;
+                    gameStatus.textContent = `Checkmate! White wins!`;
+                    gameStatus.style.backgroundColor = '#e74c3c';
+                } else {
+                    gameActive = false;
+                    gameStatus.textContent = 'Stalemate! Game drawn.';
+                    gameStatus.style.backgroundColor = '#f39c12';
+                }
+                return;
+            }
 
             let bestMove = null;
 
@@ -1914,8 +1933,30 @@
         }
 
         function botGetRandomMove(allMoves) {
+            // Filter out moves where the moved piece gets captured immediately
+            const safeMoves = [];
+
+            for (const move of allMoves) {
+                const savedState = makeMoveOnBoard(move.from, move.to);
+
+                // Check if any opponent piece can capture our moved piece on next turn
+                const opponentColor = 'white'; // After black moves, white responds
+                const opponentCanCapture = getAllLegalMovesForColor(opponentColor).some(
+                    oppMove => oppMove.to.row === move.to.row && oppMove.to.col === move.to.col
+                );
+
+                undoMoveOnBoard(savedState);
+
+                if (!opponentCanCapture) {
+                    safeMoves.push(move);
+                }
+            }
+
+            // If we have safe moves, use them; otherwise fall back to all moves
+            const candidates = safeMoves.length > 0 ? safeMoves : allMoves;
+
             // Add small random factor to encourage variety
-            const weightedMoves = allMoves.map(move => ({
+            const weightedMoves = candidates.map(move => ({
                 move,
                 weight: 1 + Math.random() * 0.1
             }));
@@ -1930,7 +1971,7 @@
                 random -= item.weight;
                 if (random <= 0) return item.move;
             }
-            return allMoves[Math.floor(Math.random() * allMoves.length)];
+            return candidates[Math.floor(Math.random() * candidates.length)];
         }
 
         function botGetMediumMove(botColor, allMoves) {
@@ -1964,13 +2005,27 @@
         }
 
         function botGetHardMove(botColor, allMoves) {
+            // Sort moves: prioritize captures first for better pruning
+            const scoredMoves = allMoves.map(move => {
+                let score = 0;
+                // Bonus for capturing pieces (higher value = more bonus)
+                if (board[move.to.row][move.to.col]) {
+                    score += pieceValues[board[move.to.row][move.to.col].type] * 10;
+                }
+                // Small bonus for en passant
+                if (move.isEnPassant) score += 50;
+                return { move, score };
+            });
+
+            scoredMoves.sort((a, b) => b.score - a.score);
+
             let bestMove = null;
             let bestScore = -Infinity;
 
-            for (const move of allMoves) {
-                const savedState = makeMoveOnBoard(move.from, move.to);
+            for (const item of scoredMoves) {
+                const savedState = makeMoveOnBoard(item.move.from, item.move.to);
 
-                // Minimax at depth 2
+                // Minimax at depth 2 with quiescence
                 const opponentColor = botColor === 'white' ? 'black' : 'white';
                 const oppScore = minimax(opponentColor, 2);
 
@@ -1979,19 +2034,53 @@
                 const score = -oppScore;
                 if (score > bestScore) {
                     bestScore = score;
-                    bestMove = move;
+                    bestMove = item.move;
                 }
             }
 
             return bestMove || allMoves[0];
         }
 
-        function minimax(color, depth) {
+        // Quiescence search: evaluate position considering only captures
+        // Returns a quick evaluation that accounts for immediate tactical threats
+        function evaluateBoardWithCaptures(color) {
             const moves = getAllLegalMovesForColor(color);
 
-            // Terminal node or max depth reached
-            if (moves.length === 0 || depth === 0) {
-                return evaluateBoard(board, color === 'white' ? 'black' : 'white');
+            // Filter capture moves (including en passant)
+            let bestCaptureValue = 0;
+            for (const move of moves) {
+                if (board[move.to.row][move.to.col] || move.isEnPassant) {
+                    let capturedPieceType = board[move.to.row][move.to.col]?.type || 'p';
+                    const captureValue = pieceValues[capturedPieceType];
+                    // Pawn promotion bonus
+                    if (move.isPromotion && !board[move.to.row][move.to.col]) {
+                        bestCaptureValue += 800;
+                    } else if (captureValue > bestCaptureValue) {
+                        bestCaptureValue = captureValue;
+                    }
+                }
+            }
+
+            const baseScore = evaluateBoard(board, color === 'white' ? 'black' : 'white');
+            // Add a bonus for having good capture opportunities
+            return baseScore + (color === 'black' ? Math.min(bestCaptureValue, 500) : -Math.min(bestCaptureValue, 500));
+        }
+
+function minimax(color, depth) {
+            const moves = getAllLegalMovesForColor(color);
+
+            // Terminal node - check for game over (checkmate or stalemate)
+            if (moves.length === 0) {
+                if (isCheck(color)) {
+                    return color === 'black' ? -100000 : 100000; // Black is in checkmate
+                } else {
+                    return 0; // Stalemate
+                }
+            }
+
+            // Max depth reached - use quiescence search (evaluate with capture extension)
+            if (depth === 0) {
+                return evaluateBoardWithCaptures(color);
             }
 
             if (color === 'black') {
