@@ -261,10 +261,7 @@
         let notes = {};
         let currentNoteId = null;
         let currentView = 'source'; // 'source' or 'preview'
-        let autoSaveTimer = null;
         let lastSavedContent = '';
-        let importedFromFile = false; // Track if notes were imported from a file
-        let importedFilePath = ''; // Track the path of the imported file
         let debugMode = true; // Enable/disable console logs
         let selectedHistoryItems = new Set(); // Track multiple selected history items
         const EDIT_ZOOM_MIN = 10;
@@ -295,21 +292,19 @@
         // Initialize the application
         function init() {
             log('Initializing application');
-            loadNotes();
-            loadEditZoom();
+            const defaultData = {
+                [Date.now().toString()]: {
+                    title: 'Default Note',
+                    content: '# Welcome to Markdown Notebook\n\nStart writing your notes here...',
+                    history: []
+                }
+            };
+            notes = storageManager.loadNotes(defaultData);
+            editFontSizePx = storageManager.loadZoom(EDIT_ZOOM_MIN, EDIT_ZOOM_MAX, 14);
             updateNotesList();
             setupEventListeners();
             applyEditZoom();
             log('Application initialized');
-        }
-
-        // Load edit panel zoom level from localStorage
-        function loadEditZoom() {
-            const saved = localStorage.getItem('editFontSizePx');
-            if (saved !== null) {
-                const n = parseInt(saved, 10);
-                if (!isNaN(n) && n >= EDIT_ZOOM_MIN && n <= EDIT_ZOOM_MAX) editFontSizePx = n;
-            }
         }
 
         // Apply current zoom to edit textarea and preview (if visible)
@@ -323,7 +318,7 @@
         function editZoomIn() {
             if (editFontSizePx < EDIT_ZOOM_MAX) {
                 editFontSizePx = Math.min(EDIT_ZOOM_MAX, editFontSizePx + EDIT_ZOOM_STEP);
-                localStorage.setItem('editFontSizePx', String(editFontSizePx));
+                storageManager.saveZoom(editFontSizePx);
                 applyEditZoom();
             }
         }
@@ -331,7 +326,7 @@
         function editZoomOut() {
             if (editFontSizePx > EDIT_ZOOM_MIN) {
                 editFontSizePx = Math.max(EDIT_ZOOM_MIN, editFontSizePx - EDIT_ZOOM_STEP);
-                localStorage.setItem('editFontSizePx', String(editFontSizePx));
+                storageManager.saveZoom(editFontSizePx);
                 applyEditZoom();
             }
         }
@@ -505,39 +500,240 @@
         // Instantiate context menu
         const contextMenu = new ContextMenu(document.getElementById('contextMenu'));
 
-        // Load notes from localStorage
-        function loadNotes() {
-            log('Loading notes from localStorage');
-            const savedNotes = localStorage.getItem('markdownNotes');
-            if (savedNotes) {
-                log('Found saved notes');
-                notes = JSON.parse(savedNotes);
-            } else {
-                log('No saved notes, creating default');
-                // Initialize with a default note if none exists
-                const defaultNoteId = Date.now().toString();
-                notes = {
-                    [defaultNoteId]: {
-                        title: 'Default Note',
-                        content: '# Welcome to Markdown Notebook\n\nStart writing your notes here...',
-                        history: []
-                    }
+        /**
+         * StorageManager class - handles all storage operations including localStorage,
+         * file import/export, and auto-save functionality.
+         */
+        class StorageManager {
+            constructor() {
+                this.STORAGE_KEYS = {
+                    NOTES: 'markdownNotes',
+                    ZOOM: 'editFontSizePx'
                 };
-                saveNotes();
+                this._defaultExportName = null; // Track filename for re-export
+                this._debounceTimer = null;
             }
-            log('Notes loaded:', notes);
-            
-            // Automatically select the first note if notes exist
-            if (Object.keys(notes).length > 0 && !currentNoteId) {
-                const firstNoteId = Object.keys(notes)[0];
-                selectNote(firstNoteId);
+
+            /**
+             * Load notes from localStorage with fallback to default data.
+             * @param {object} defaultData - Default notes object if none exist
+             */
+            loadNotes(defaultData) {
+                log('Loading notes from localStorage');
+                const savedNotes = localStorage.getItem(this.STORAGE_KEYS.NOTES);
+                if (savedNotes) {
+                    log('Found saved notes');
+                    return JSON.parse(savedNotes);
+                } else {
+                    log('No saved notes, creating default');
+                    // Initialize with a default note if none exists
+                    this.saveNotes(defaultData);
+                    return defaultData;
+                }
+            }
+
+            /**
+             * Save notes to localStorage.
+             * @param {object} notes - Notes object to save
+             */
+            saveNotes(notes) {
+                localStorage.setItem(this.STORAGE_KEYS.NOTES, JSON.stringify(notes));
+            }
+
+            /**
+             * Load zoom level from localStorage with range validation.
+             * @param {number} min - Minimum allowed value
+             * @param {number} max - Maximum allowed value
+             * @param {number} defaultValue - Default value if not found or invalid
+             */
+            loadZoom(min, max, defaultValue) {
+                const saved = localStorage.getItem(this.STORAGE_KEYS.ZOOM);
+                if (saved !== null) {
+                    const n = parseInt(saved, 10);
+                    if (!isNaN(n) && n >= min && n <= max) return n;
+                }
+                return defaultValue;
+            }
+
+            /**
+             * Save zoom level to localStorage.
+             * @param {number} zoom - Zoom level to save
+             */
+            saveZoom(zoom) {
+                localStorage.setItem(this.STORAGE_KEYS.ZOOM, String(zoom));
+            }
+
+            /**
+             * Initialize auto-save with debouncing.
+             * @param {function} saveCallback - Function to call on save
+             * @param {number} debounceMs - Debounce delay in milliseconds (default: 300)
+             */
+            initAutoSave(saveCallback, debounceMs = 300) {
+                this.cancelAutoSave();
+                this._debounceTimer = setTimeout(() => {
+                    saveCallback();
+                }, debounceMs);
+            }
+
+            /**
+             * Cancel any pending auto-save timer.
+             */
+            cancelAutoSave() {
+                if (this._debounceTimer) {
+                    clearTimeout(this._debounceTimer);
+                    this._debounceTimer = null;
+                }
+            }
+
+            /**
+             * Trigger immediate save and cancel pending debounce.
+             */
+            triggerImmediateSave(saveCallback) {
+                this.cancelAutoSave();
+                saveCallback();
+            }
+
+            /**
+             * Import notes from a JSON file using FileReader.
+             * @param {File} file - File object to import
+             * @returns {Promise<object>} Parsed notes object
+             */
+            async importFromFile(file) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+
+                    reader.onload = (e) => {
+                        try {
+                            const fileContent = e.target.result;
+                            const importedNotes = JSON.parse(fileContent);
+
+                            if (!this.validateNotesStructure(importedNotes)) {
+                                reject(new Error('Invalid file format'));
+                                return;
+                            }
+
+                            // Track import source for re-export
+                            this._defaultExportName = file.name;
+                            log('Notes imported successfully from:', file.name);
+                            resolve(importedNotes);
+                        } catch (error) {
+                            reject(error);
+                        }
+                    };
+
+                    reader.onerror = () => reject(new Error('Error reading file'));
+                    reader.readAsText(file);
+                });
+            }
+
+            /**
+             * Export notes to a JSON file.
+             * Uses File System Access API if available, falls back to blob download.
+             * @param {object} data - Notes object to export
+             * @param {string|null} filename - Filename (uses _defaultExportName if null)
+             */
+            async exportToFile(data, filename = null) {
+                const targetFilename = filename || this._defaultExportName ||
+                    'notes-export-' + new Date().toISOString().slice(0, 10) + '.json';
+
+                try {
+                    // Try File System Access API first
+                    if ('showSaveFilePicker' in self) {
+                        await this._saveWithFileSystemAPI(data, targetFilename);
+                    } else {
+                        // Fallback to blob download
+                        const dataStr = JSON.stringify(data, null, 2);
+                        this._saveDataToFile(dataStr, targetFilename, 'application/json');
+                    }
+                    log('Notes exported successfully to:', targetFilename);
+                } catch (error) {
+                    console.error('Export error:', error);
+                    throw error;
+                }
+            }
+
+            /**
+             * Save data using File System Access API.
+             * @param {object} data - Data to save
+             * @param {string} fileName - Target filename
+             */
+            async _saveWithFileSystemAPI(data, fileName) {
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+
+                const fileHandle = await window.showSaveFilePicker({
+                    suggestedName: fileName,
+                    types: [{
+                        description: 'JSON files',
+                        accept: { 'application/json': ['.json'] }
+                    }]
+                });
+
+                const writable = await fileHandle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+            }
+
+            /**
+             * Save data to file using blob download (fallback).
+             * @param {string} data - Data string
+             * @param {string} filename - Target filename
+             * @param {string} type - MIME type
+             */
+            _saveDataToFile(data, filename, type) {
+                const blob = new Blob([data], { type: type });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+
+            /**
+             * Validate notes structure.
+             * @param {object} importedNotes - Notes object to validate
+             * @returns {boolean} True if valid
+             */
+            validateNotesStructure(importedNotes) {
+                if (!importedNotes || typeof importedNotes !== 'object') {
+                    return false;
+                }
+
+                for (const [key, note] of Object.entries(importedNotes)) {
+                    if (typeof note !== 'object' || note === null) {
+                        return false;
+                    }
+                    if (typeof note.title !== 'string' || typeof note.content !== 'string') {
+                        return false;
+                    }
+                    if (!Array.isArray(note.history)) {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            /**
+             * Get the filename of the last imported file.
+             */
+            getDefaultExportName() {
+                return this._defaultExportName;
+            }
+
+            /**
+             * Set the default export filename (for re-export tracking).
+             * @param {string} filename - Filename to set
+             */
+            setDefaultExportName(filename) {
+                this._defaultExportName = filename;
             }
         }
 
-        // Save notes to localStorage
-        function saveNotes() {
-            localStorage.setItem('markdownNotes', JSON.stringify(notes));
-        }
+        // Global storage manager instance
+        const storageManager = new StorageManager();
 
         // Setup event listeners
         function setupEventListeners() {
@@ -633,186 +829,68 @@
         }
 
         // Import notes from a JSON file
-        function importNotes() {
+        async function importNotes() {
             log('Importing notes');
-            
-            // Create a file input element
+
             const fileInput = document.createElement('input');
             fileInput.type = 'file';
             fileInput.accept = '.json';
-            
-            fileInput.onchange = function(e) {
-                const file = e.target.files[0];
-                if (!file) {
-                    log('No file selected');
-                    return;
-                }
-                
-                const reader = new FileReader();
-                reader.onload = function(e) {
+
+            // Use Promise wrapper for the onchange event
+            await new Promise((resolve, reject) => {
+                fileInput.onchange = async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) {
+                        log('No file selected');
+                        resolve();
+                        return;
+                    }
+
                     try {
-                        const fileContent = e.target.result;
-                        const importedNotes = JSON.parse(fileContent);
-                        
-                        // Validate the imported data structure
-                        if (!validateImportedNotes(importedNotes)) {
-                            alert('Invalid file format. Please select a valid notes file.');
-                            log('Invalid file format');
-                            return;
-                        }
-                        
+                        // Import using storageManager
+                        const importedNotes = await storageManager.importFromFile(file);
+
                         // Replace current notes with imported notes
                         notes = importedNotes;
-                        saveNotes();
+                        storageManager.saveNotes(notes);
                         updateNotesList();
-                        
-                        // Track that notes were imported from a file
-                        importedFromFile = true;
-                        // For browser security reasons, we can only get the file name, not the full path
-                        importedFilePath = file.name;
-                        
+
                         log('Notes imported successfully');
+                        resolve();
                     } catch (error) {
                         console.error('Error importing notes:', error);
-                        alert('Error importing notes: ' + error.message);
+                        alert(error.message === 'Invalid file format' ? 'Invalid file format. Please select a valid notes file.' : 'Error importing notes: ' + error.message);
+                        reject(error);
                     }
                 };
-                
-                reader.onerror = function() {
-                    console.error('Error reading file');
-                    alert('Error reading file');
-                };
-                
-                reader.readAsText(file);
-            };
-            
-            // Trigger file selection
-            fileInput.click();
+
+                // Trigger file selection
+                fileInput.click();
+            });
         }
 
         // Export notes to a JSON file
-        function exportNotes() {
+        async function exportNotes() {
             log('Exporting notes');
-            
-            // If notes were imported from a file, export back to that same file
-            if (importedFromFile && importedFilePath) {
-                // Try to use File System Access API if available
-                    if ('showSaveFilePicker' in self) {
-                        // Use File System Access API
-                        saveFileWithFileSystemAccessAPI(notes, importedFilePath);
-                    } else {
-                        // Fallback to traditional download approach
-                        const dataStr = JSON.stringify(notes, null, 2);
-                        saveDataToFile(dataStr, importedFilePath, 'application/json');
-                    }
-                    log('Notes exported successfully to original file');
-            } else {
-                // Create a default filename with timestamp
-                const fileName = 'notes-export-' + new Date().toISOString().slice(0, 10) + '.json';
-                
-                // Try to use File System Access API if available
-                    if ('showSaveFilePicker' in self) {
-                        // Use File System Access API
-                        saveFileWithFileSystemAccessAPI(notes, fileName);
-                    } else {
-                        // Fallback to traditional download approach
-                        const dataStr = JSON.stringify(notes, null, 2);
-                        saveDataToFile(dataStr, fileName, 'application/json');
-                    }
-                    log('Notes exported successfully');
-            }
-        }
 
-        // Helper function to save data using File System Access API
-        async function saveFileWithFileSystemAccessAPI(data, fileName) {
             try {
-                // Create a Blob from the data
-                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                
-                // Create a file handle using the File System Access API
-                const fileHandle = await window.showSaveFilePicker({
-                    suggestedName: fileName,
-                    types: [{
-                        description: 'JSON files',
-                        accept: { 'application/json': ['.json'] }
-                    }]
-                });
-                
-                // Write the file
-                const writable = await fileHandle.createWritable();
-                await writable.write(blob);
-                await writable.close();
-                
-                log('File saved successfully using File System Access API');
+                await storageManager.exportToFile(notes, null);
+                log('Notes exported successfully');
             } catch (error) {
-                console.error('Error saving file with File System Access API:', error);
-                // Fallback to traditional download approach
-                const dataStr = JSON.stringify(data, null, 2);
-                saveDataToFile(dataStr, fileName, 'application/json');
+                console.error('Error exporting notes:', error);
             }
         }
 
-        // Helper function to save data to a file
-        function saveDataToFile(data, filename, type) {
-            // 1. Create a Blob object from the data
-            const blob = new Blob([data], { type: type });
 
-            // 2. Create a URL for the Blob object
-            const url = URL.createObjectURL(blob);
-
-            // 3. Create a temporary anchor element
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename; // Suggests a filename to the browser
-
-            // 4. Append anchor to body, click it, and remove it
-            // Appending to the body helps ensure the click event works in all browsers
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-
-            // 5. Revoke the object URL to free up memory
-            URL.revokeObjectURL(url);
-        }
-
-        // Validate imported notes structure
-        function validateImportedNotes(importedNotes) {
-            if (!importedNotes || typeof importedNotes !== 'object') {
-                return false;
-            }
-            
-            // Check that each note has the required properties
-            for (const [key, note] of Object.entries(importedNotes)) {
-                if (typeof note !== 'object' || note === null) {
-                    return false;
-                }
-                if (typeof note.title !== 'string' || typeof note.content !== 'string') {
-                    return false;
-                }
-                if (!Array.isArray(note.history)) {
-                    return false;
-                }
-            }
-            
-            return true;
-        }
-
-        // Handle input in edit panel for auto-save
+        // Handle input in edit panel for auto-save using storageManager
         function handleEditInput() {
-            // Clear existing timer
-            if (autoSaveTimer) {
-                clearTimeout(autoSaveTimer);
-            }
-            
-            // Set new timer (300ms delay)
-            autoSaveTimer = setTimeout(() => {
-                // Only save to localStorage but don't create new history version
+            storageManager.initAutoSave(() => {
                 if (currentNoteId && notes[currentNoteId]) {
                     const content = editContent.value;
                     if (content !== lastSavedContent) {
                         notes[currentNoteId].content = content;
                         lastSavedContent = content;
-                        saveNotes();
+                        storageManager.saveNotes(notes);
                     }
                 }
             }, 300);
@@ -831,7 +909,7 @@
                 history: []
             };
             log('Created note with ID:', noteId);
-            saveNotes();
+            storageManager.saveNotes(notes);
             updateNotesList();
             selectNote(noteId);
             log('Note creation completed');
@@ -840,9 +918,9 @@
         function notesDelete(noteId) {
             if (confirm('Are you sure you want to delete this note?')) {
                 delete notes[noteId];
-                saveNotes();
+                storageManager.saveNotes(notes);
                 updateNotesList();
-                
+
                 // If we deleted the current note, select the first one or clear the editor
                 if (currentNoteId === noteId) {
                     if (Object.keys(notes).length > 0) {
@@ -860,7 +938,7 @@
             const newTitle = prompt('Enter new title for the note:', notes[noteId].title);
             if (newTitle !== null && newTitle.trim() !== '') {
                 notes[noteId].title = newTitle;
-                saveNotes();
+                storageManager.saveNotes(notes);
                 updateNotesList();
             }
         }
@@ -1009,11 +1087,11 @@
                 // always save content regardless of if content is auto save or not
                 notes[currentNoteId].content = content;
                     lastSavedContent = content;
-                    saveNotes();
-                    
+                    storageManager.saveNotes(notes);
+
                     // Create new version in history only when save button is clicked
                     historyCreate(currentNoteId);
-                    
+
                     // Update history panel
                     updateHistoryList();
             }
@@ -1025,7 +1103,7 @@
                 const now = new Date();
                 // Create a unique timestamp to avoid duplicates
                 let timestamp = now.toLocaleString();
-                
+
                 // Check if this timestamp already exists and make it unique
                 let counter = 1;
                 const originalTimestamp = timestamp;
@@ -1033,7 +1111,7 @@
                     timestamp = `${originalTimestamp} (${counter})`;
                     counter++;
                 }
-                
+
                 const version = {
                     timestamp: timestamp,
                     content: notes[noteId].content
@@ -1043,7 +1121,7 @@
                 if (notes[noteId].history.length > 20) {
                     notes[noteId].history = notes[noteId].history.slice(0, 20);
                 }
-                saveNotes();
+                storageManager.saveNotes(notes);
             }
         }
 
@@ -1051,7 +1129,7 @@
             if (notes[noteId] && notes[noteId].history[versionId]) {
                 // Remove the specific version
                 notes[noteId].history.splice(versionId, 1);
-                saveNotes();
+                storageManager.saveNotes(notes);
                 updateHistoryList();
             }
         }
@@ -1059,7 +1137,7 @@
         function historyRename(noteId, versionId, newName) {
             if (notes[noteId] && notes[noteId].history[versionId]) {
                 notes[noteId].history[versionId].timestamp = newName;
-                saveNotes();
+                storageManager.saveNotes(notes);
                 updateHistoryList();
             }
         }
