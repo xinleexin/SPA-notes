@@ -1,0 +1,224 @@
+# Workspace Skill: SPA Notes Application
+
+## Overview
+This is a Single Page Application (SPA) for managing markdown notes with version history, built as pure client-side HTML/JS with no build process. The main application is `notes.html`. There's also a chess SPA (`chess.html`) with bot difficulty levels.
+
+---
+
+## Development Environment
+- **OS**: Windows 11
+- **Shell**: PowerShell (use for file operations)
+- **Language**: JavaScript (pure client-side, no build process)
+
+---
+
+## Key Commands
+
+| Task | Command |
+|------|---------|
+| Run the app | Open `notes.html` directly in a browser |
+| Run tests | Open `test.html` in a browser and click "Run All Tests" |
+| Test import/export | Open `import-export-test.html` if available |
+| Play Chess | Open `chess.html` in a browser |
+
+---
+
+## Architecture (Notes SPA)
+
+### Class-Based Structure
+
+| Class | Purpose |
+|-------|---------|
+| **StorageManager** | localStorage operations, auto-save (debounced), file import/export |
+| **HistoryManager** | Version history management (create/delete/rename/restore) |
+| **NotesManager** | Note lifecycle (create/delete/rename/select/import/export) |
+| **ContextMenu** | Right-click menu for notes and history versions |
+
+### State Management
+
+- **`notes`**: Object `{ noteId: { title, content, history: [{timestamp, content}] } }`
+- **`currentNoteId`**: ID of currently selected note (null if none)
+- **`currentView`**: `'source'` (textarea) or `'preview'` (rendered markdown)
+- **`lastSavedContent`**: Tracks content to avoid redundant auto-saves
+- **`selectedHistoryItems`** (in HistoryManager): Set tracking multi-selected history versions
+- **`editFontSizePx`**: Current zoom level in edit panel (10-24px range)
+
+### Persistence
+
+All state persists to `localStorage`:
+- Notes data: key `'markdownNotes'`
+- Edit zoom: key `'editFontSizePx'`
+
+---
+
+## Data Flow
+
+1. **Initialization**: `init()` → manager instances → `loadNotes()` → `updateList()` → `setupEventListeners()`
+2. **User actions** → update state → storage persistence → DOM refresh via class methods
+
+### Key Components (Notes)
+
+| Component | Description |
+|-----------|-------------|
+| **Notes panel** (20% width) | List of notes with create/delete/rename context menu |
+| **Edit panel** (60% width) | Textarea for markdown editing; toggle to preview with `marked.js` + `KaTeX` |
+| **History panel** (20% width) | Version history with restore/delete/rename; supports Ctrl+multi-select |
+| **Resize handle** | Draggable divider for panel width adjustment |
+
+### Class Reference
+
+#### StorageManager
+- `loadNotes(defaultData)` - Load from localStorage or create defaults
+- `saveNotes(notes)` - Persist to localStorage
+- `initAutoSave(callback, 300ms)` - Debounced auto-save
+- `importFromFile(file)` / `exportToFile(data)` - File I/O with FileSystem API fallback
+
+#### HistoryManager
+- `create(noteId)` - Create new version (max 20 kept)
+- `delete(noteId, index)` - Remove specific version
+- `rename(noteId, index, newName)` - Update version timestamp
+- `select(noteId, versionIndex)` - Load version into editor
+- `updateList()` - Re-render history panel
+
+#### NotesManager
+- `create()` - Create new note with timestamp title
+- `delete(noteId)` - Delete note with confirmation
+- `rename(noteId)` - Rename via prompt dialog
+- `select(noteId)` - Select and load note content
+- `import()` / `export()` - File-based import/export
+
+#### ContextMenu
+- `showNoteContextMenu(event, noteId)` - Rename/Delete for notes
+- `showHistoryContextMenu(event, noteId, versionIndex)` - Rename/Delete for versions
+- `showBulkHistoryContextMenu(event, noteId)` - Bulk delete selected versions
+
+---
+
+## Key Functions Reference (Notes)
+
+| Function | Description |
+|----------|-------------|
+| `init()` | Application initialization with manager setup |
+| `setupEventListeners()` | Register all DOM event handlers |
+| `editSave()` | Manual save with history version creation |
+| `handleEditInput()` | Debounced auto-save handler (300ms) |
+| `applyEditZoom()` | Apply zoom level to editor/preview |
+| `editToggleView()` | Toggle source/preview view mode |
+
+### Utility Functions
+- `renderMathWithKaTeX(html)` - Process math formulas in rendered HTML
+
+---
+
+## Important Patterns (Notes)
+
+| Pattern | Implementation |
+|---------|----------------|
+| **Debounced auto-save** | 300ms after input; updates content only |
+| **Save button** | Creates new history version + persists content |
+| **History limit** | Keeps last 20 versions per note |
+| **Context menu** | Shared element at cursor position |
+
+---
+
+## Chess SPA State Management
+
+- **`board`**: 8x8 array of `{type, color}` objects or null
+- **`currentTurn`**: 'white' or 'black'
+- **`botDifficulty`**: 'easy', 'medium', or 'hard'
+- **`selectedSquare`**, **`legalMoves`**, **`moveHistory`**, etc.
+
+**Persistence**: Chess state persists to `localStorage` under key `'chessGame'`.
+
+### Chess SPA Components
+
+| Component | Description |
+|-----------|-------------|
+| **Board panel** | 8x8 grid with chess pieces, coordinates |
+| **History panel** | Move history list, difficulty dropdown (Easy/Medium/Hard) |
+| **Buttons** | New Game, Save/Load Game, Reset Position |
+
+### Chess Bot Difficulty Levels
+
+#### Easy (0-ply - Random)
+- Picks random legal moves
+- Slight randomness factor for variety
+
+#### Medium (2-ply with piece-square tables)
+- Current 2-ply search implementation
+- Evaluates position after each initial move
+- Uses piece-square tables for positional awareness
+
+#### Hard (3-ply minimax)
+- For each initial white move:
+  - Simulate the move
+  - Find black's best response (minimize white's score)
+  - Evaluate resulting position after white's second move
+- Considers deeper calculation and threat blocking
+
+### Chess SPA Key Functions
+
+#### Bot AI Functions
+- `botMakeMove()` - Select and execute bot move based on difficulty
+- `evaluateBoard(board, botColor)` - Score position using piece values + positional tables
+- `getAllLegalMovesForColor(color)` - Get all legal moves for a color
+- `makeMoveOnBoard(from, to)` / `undoMoveOnBoard(savedState)` - Simulate/undo moves for search
+
+#### State Persistence
+- `autoSave()` - Save to localStorage
+- `saveGame()` / `loadGame()` - File-based export/import with File System Access API fallback
+
+---
+
+## Testing Approach
+
+**TDD workflow** for new features:
+1. Define expected behavior
+2. Write test first (unit → integration → E2E)
+3. Run tests and verify failure
+4. Implement minimal code to pass
+5. Refactor while keeping tests green
+6. Manual UI sanity check
+
+**Test patterns:**
+- **Unit**: test pure functions with mock data
+- **Integration**: test DOM + state interaction
+- **E2E**: browser automation for user flows
+
+---
+
+## Project-Specific Best Practices
+
+### File Operations
+- Use dedicated tools (`Read`, `Edit`, `Write`, `Glob`, `Grep`) for file operations
+- Avoid `sed`, `cat`, `grep`, `find` commands - use Claude Code's built-in tools
+- These tools are safer, more precise, and provide better error handling
+
+### Chess SPA Specifics
+- **Auto-save vs Manual save**: Separate logic - `autoSave()` for silent localStorage persistence, `saveGame()` for user-triggered file export
+- **Async functions**: Use `async`/`await` for file system operations (File System Access API)
+- **Fallback patterns**: Always provide fallbacks for modern APIs (e.g., blob download for save, file input for load)
+
+### CSS Optimization
+- Use `clamp()` for responsive font sizes
+- Use `aspect-ratio` for maintaining square boards
+- Use `max-width`/`max-height` with viewport units for responsive sizing
+- Keep styling simple - avoid complex 3D effects unless requested
+
+---
+
+## File Structure
+
+| File | Purpose |
+|------|---------|
+| `SPA.md` | This workspace skill documentation |
+| `notes.html` | Main notes SPA application |
+| `chess.html` | Chess SPA with bot AI |
+| `note.html` | Individual note template/variant |
+| `notes.html` | Notes management SPA |
+
+---
+
+## Workspace Configuration
+
+**Git Remote**: https://github.com/xinleexin/SPA-notes.git
