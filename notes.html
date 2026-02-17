@@ -310,18 +310,16 @@
         // GLOBAL CONSTANTS AND STATE
         // ==================================================================
 
-        // Global variables - central state for the application
-        let notes = {};                              // { noteId: { title, content, history[] } }
-        let currentNoteId = null;                    // Currently selected note ID (null if none)
-        let currentView = 'source';                  // View mode: 'source' or 'preview'
-        let lastSavedContent = '';                   // Tracks content for auto-save optimization
-        let debugMode = true;                        // Enable/disable console logs
+        let notes = {};
+        let currentNoteId = null;
+        let currentView = 'source';
+        let lastSavedContent = '';
+        let debugMode = true;
         const EDIT_ZOOM_MIN = 10;
         const EDIT_ZOOM_MAX = 24;
         const EDIT_ZOOM_STEP = 2;
-        let editFontSizePx = 14;                     // Edit panel text size (px)
+        let editFontSizePx = 14;
 
-        // Simple logger for debugging
         function log(msg) {
             if (debugMode) console.log(`[NotesApp] ${msg}`);
         }
@@ -353,27 +351,18 @@
 
         // ==================================================================
         // STORAGE MANAGER CLASS
-        // Handles all storage operations: localStorage, import/export, auto-save
         // ==================================================================
 
-        /**
-         * StorageManager class - handles all storage operations including localStorage,
-         * file import/export, and auto-save functionality.
-         */
         class StorageManager {
             constructor() {
                 this.STORAGE_KEYS = {
                     NOTES: 'markdownNotes',
                     ZOOM: 'editFontSizePx'
                 };
-                this._defaultExportName = null; // Track filename for re-export
+                this._defaultExportName = null;
                 this._debounceTimer = null;
             }
 
-            /**
-             * Load notes from localStorage with fallback to default data.
-             * @param {object} defaultData - Default notes object if none exist
-             */
             loadNotes(defaultData) {
                 log('Loading notes from localStorage');
                 const savedNotes = localStorage.getItem(this.STORAGE_KEYS.NOTES);
@@ -387,20 +376,10 @@
                 }
             }
 
-            /**
-             * Save notes to localStorage.
-             * @param {object} notes - Notes object to save
-             */
             saveNotes(notes) {
                 localStorage.setItem(this.STORAGE_KEYS.NOTES, JSON.stringify(notes));
             }
 
-            /**
-             * Load zoom level from localStorage with range validation.
-             * @param {number} min - Minimum allowed value
-             * @param {number} max - Maximum allowed value
-             * @param {number} defaultValue - Default value if not found or invalid
-             */
             loadZoom(min, max, defaultValue) {
                 const saved = localStorage.getItem(this.STORAGE_KEYS.ZOOM);
                 if (saved !== null) {
@@ -410,19 +389,10 @@
                 return defaultValue;
             }
 
-            /**
-             * Save zoom level to localStorage.
-             * @param {number} zoom - Zoom level to save
-             */
             saveZoom(zoom) {
                 localStorage.setItem(this.STORAGE_KEYS.ZOOM, String(zoom));
             }
 
-            /**
-             * Initialize auto-save with debouncing.
-             * @param {function} saveCallback - Function to call on save
-             * @param {number} debounceMs - Debounce delay in milliseconds (default: 300)
-             */
             initAutoSave(saveCallback, debounceMs = 300) {
                 this.cancelAutoSave();
                 this._debounceTimer = setTimeout(() => {
@@ -430,9 +400,6 @@
                 }, debounceMs);
             }
 
-            /**
-             * Cancel any pending auto-save timer.
-             */
             cancelAutoSave() {
                 if (this._debounceTimer) {
                     clearTimeout(this._debounceTimer);
@@ -440,33 +407,22 @@
                 }
             }
 
-            /**
-             * Trigger immediate save and cancel pending debounce.
-             */
             triggerImmediateSave(saveCallback) {
                 this.cancelAutoSave();
                 saveCallback();
             }
 
-            /**
-             * Import notes from a JSON file using FileReader.
-             * @param {File} file - File object to import
-             * @returns {Promise<object>} Parsed notes object
-             */
             async importFromFile(file) {
                 return new Promise((resolve, reject) => {
                     const reader = new FileReader();
-
                     reader.onload = (e) => {
                         try {
                             const fileContent = e.target.result;
                             const importedNotes = JSON.parse(fileContent);
-
                             if (!this.validateNotesStructure(importedNotes)) {
                                 reject(new Error('Invalid file format'));
                                 return;
                             }
-
                             this._defaultExportName = file.name;
                             log('Notes imported successfully from:', file.name);
                             resolve(importedNotes);
@@ -474,22 +430,14 @@
                             reject(error);
                         }
                     };
-
                     reader.onerror = () => reject(new Error('Error reading file'));
                     reader.readAsText(file);
                 });
             }
 
-            /**
-             * Export notes to a JSON file.
-             * Uses File System Access API if available, falls back to blob download.
-             * @param {object} data - Notes object to export
-             * @param {string|null} filename - Filename (uses _defaultExportName if null)
-             */
             async exportToFile(data, filename = null) {
                 const targetFilename = filename || this._defaultExportName ||
                     'notes-export-' + new Date().toISOString().slice(0, 10) + '.json';
-
                 try {
                     if ('showSaveFilePicker' in self) {
                         await this._saveWithFileSystemAPI(data, targetFilename);
@@ -504,33 +452,17 @@
                 }
             }
 
-            /**
-             * Save data using File System Access API.
-             * @param {object} data - Data to save
-             * @param {string} fileName - Target filename
-             */
             async _saveWithFileSystemAPI(data, fileName) {
                 const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-
                 const fileHandle = await window.showSaveFilePicker({
                     suggestedName: fileName,
-                    types: [{
-                        description: 'JSON files',
-                        accept: { 'application/json': ['.json'] }
-                    }]
+                    types: [{ description: 'JSON files', accept: { 'application/json': ['.json'] } }]
                 });
-
                 const writable = await fileHandle.createWritable();
                 await writable.write(blob);
                 await writable.close();
             }
 
-            /**
-             * Save data to file using blob download (fallback).
-             * @param {string} data - Data string
-             * @param {string} filename - Target filename
-             * @param {string} type - MIME type
-             */
             _saveDataToFile(data, filename, type) {
                 const blob = new Blob([data], { type: type });
                 const url = URL.createObjectURL(blob);
@@ -543,60 +475,26 @@
                 URL.revokeObjectURL(url);
             }
 
-            /**
-             * Validate notes structure.
-             * @param {object} importedNotes - Notes object to validate
-             * @returns {boolean} True if valid
-             */
             validateNotesStructure(importedNotes) {
-                if (!importedNotes || typeof importedNotes !== 'object') {
-                    return false;
-                }
-
+                if (!importedNotes || typeof importedNotes !== 'object') return false;
                 for (const [key, note] of Object.entries(importedNotes)) {
-                    if (typeof note !== 'object' || note === null) {
-                        return false;
-                    }
-                    if (typeof note.title !== 'string' || typeof note.content !== 'string') {
-                        return false;
-                    }
-                    if (!Array.isArray(note.history)) {
-                        return false;
-                    }
+                    if (typeof note !== 'object' || note === null) return false;
+                    if (typeof note.title !== 'string' || typeof note.content !== 'string') return false;
+                    if (!Array.isArray(note.history)) return false;
                 }
-
                 return true;
             }
 
-            /**
-             * Get the filename of the last imported file.
-             */
-            getDefaultExportName() {
-                return this._defaultExportName;
-            }
-
-            /**
-             * Set the default export filename (for re-export tracking).
-             * @param {string} filename - Filename to set
-             */
-            setDefaultExportName(filename) {
-                this._defaultExportName = filename;
-            }
+            getDefaultExportName() { return this._defaultExportName; }
+            setDefaultExportName(filename) { this._defaultExportName = filename; }
         }
 
-        // Global storage manager instance
         const storageManager = new StorageManager();
 
         // ==================================================================
-        // MODAL MANAGER CLASS (NEW)
-        // Handles custom modal dialogs for testable confirmations
+        // MODAL MANAGER CLASS
         // ==================================================================
 
-        /**
-         * ModalManager class - provides a testable alternative to native confirm() dialog.
-         * Uses DOM-based modal instead of blocking browser dialog, allowing UI testing tools
-         * like Chrome DevTools MCP to interact with the confirmation buttons.
-         */
         class ModalManager {
             constructor(overlayElement, titleEl, messageEl, confirmBtn, cancelBtn) {
                 this.overlay = overlayElement;
@@ -605,18 +503,10 @@
                 this.confirmBtn = confirmBtn;
                 this.cancelBtn = cancelBtn;
                 this.resolveFn = null;
-
-                // Bind event listeners
                 this.confirmBtn.addEventListener('click', () => this.handleAccept());
                 this.cancelBtn.addEventListener('click', () => this.handleReject());
             }
 
-            /**
-             * Show a confirmation modal and return Promise with user's choice.
-             * @param {string} title - Modal title
-             * @param {string} message - Modal message body
-             * @returns {Promise<boolean>} Resolves to true if confirmed, false if cancelled
-             */
             show(title, message) {
                 return new Promise(resolve => {
                     this.titleEl.textContent = title;
@@ -626,85 +516,42 @@
                 });
             }
 
-            handleAccept() {
-                if (this.resolveFn) this.resolveFn(true);
-                this.hide();
-            }
-
-            handleReject() {
-                if (this.resolveFn) this.resolveFn(false);
-                this.hide();
-            }
-
-            hide() {
-                this.overlay.style.display = 'none';
-                this.resolveFn = null;
-            }
+            handleAccept() { if (this.resolveFn) this.resolveFn(true); this.hide(); }
+            handleReject() { if (this.resolveFn) this.resolveFn(false); this.hide(); }
+            hide() { this.overlay.style.display = 'none'; this.resolveFn = null; }
         }
 
-        // Global modal manager instance
         const modalManager = new ModalManager(confirmModal, modalTitle, modalMessage, btnConfirm, btnCancel);
 
         // ==================================================================
         // HISTORY MANAGER CLASS
-        // Handles all version history operations for notes
         // ==================================================================
 
-        /**
-         * HistoryManager class - handles all history operations including creating,
-         * deleting, renaming versions, and managing the UI state.
-         */
         class HistoryManager {
             constructor(storageManager, contextMenu) {
                 this.storageManager = storageManager;
                 this.contextMenu = contextMenu;
-                this.selectedHistoryItems = new Set(); // Track multiple selected history items
+                this.selectedHistoryItems = new Set();
             }
 
-            /**
-             * Create a new version for a note.
-             * @param {string} noteId - ID of the note to create version for
-             */
             create(noteId) {
                 if (!notes[noteId]) return;
-
                 const now = new Date();
                 let timestamp = now.toLocaleString();
-
-                // Check if this timestamp already exists and make it unique
                 let counter = 1;
                 const originalTimestamp = timestamp;
                 while (notes[noteId].history.some(v => v.timestamp === timestamp)) {
                     timestamp = `${originalTimestamp} (${counter})`;
                     counter++;
                 }
-
-                const version = {
-                    timestamp: timestamp,
-                    content: notes[noteId].content
-                };
-                notes[noteId].history.unshift(version);
-                // Keep only last 20 versions
-                if (notes[noteId].history.length > 20) {
-                    notes[noteId].history = notes[noteId].history.slice(0, 20);
-                }
+                notes[noteId].history.unshift({ timestamp: timestamp, content: notes[noteId].content });
+                if (notes[noteId].history.length > 20) notes[noteId].history = notes[noteId].history.slice(0, 20);
                 this.storageManager.saveNotes(notes);
             }
 
-            /**
-             * Delete a specific version from a note's history.
-             * @param {string} noteId - ID of the note
-             * @param {number} versionIndex - Index of the version to delete (0-based in history array)
-             */
             async delete(noteId, versionIndex) {
                 if (!notes[noteId] || !notes[noteId].history[versionIndex]) return;
-
-                // Use modal manager instead of native confirm
-                const confirmed = await modalManager.show(
-                    'Delete Version',
-                    'Are you sure you want to delete this version?'
-                );
-
+                const confirmed = await modalManager.show('Delete Version', 'Are you sure you want to delete this version?');
                 if (confirmed) {
                     notes[noteId].history.splice(versionIndex, 1);
                     this.storageManager.saveNotes(notes);
@@ -712,160 +559,83 @@
                 }
             }
 
-            /**
-             * Bulk delete selected versions.
-             * @param {string} noteId - ID of the note
-             */
             async bulkDelete(noteId) {
                 if (!notes[noteId]) return;
-
                 const count = this.selectedHistoryItems.size;
-                // Use modal manager instead of native confirm
-                const confirmed = await modalManager.show(
-                    'Delete Versions',
-                    `Are you sure you want to delete ${count} selected versions?`
-                );
-
+                const confirmed = await modalManager.show('Delete Versions', `Are you sure you want to delete ${count} selected versions?`);
                 if (confirmed) {
                     const sortedIndices = Array.from(this.selectedHistoryItems).sort((a, b) => b - a);
-                    sortedIndices.forEach(index => {
-                        notes[noteId].history.splice(index, 1);
-                    });
+                    sortedIndices.forEach(index => notes[noteId].history.splice(index, 1));
                     this.storageManager.saveNotes(notes);
                     this.clearSelection();
                     this.updateList();
                 }
             }
 
-            /**
-             * Rename a version's timestamp.
-             * @param {string} noteId - ID of the note
-             * @param {number} versionIndex - Index of the version to rename
-             * @param {string} newName - New timestamp name
-             */
             rename(noteId, versionIndex, newName) {
                 if (!notes[noteId] || !notes[noteId].history[versionIndex]) return;
-
                 notes[noteId].history[versionIndex].timestamp = newName;
                 this.storageManager.saveNotes(notes);
                 this.updateList();
             }
 
-            /**
-             * Select and load a specific version into the editor.
-             * @param {string} noteId - ID of the note
-             * @param {string|number} versionIndex - 'current' or index in history array
-             */
             select(noteId, versionIndex) {
-                // Clear previous selections from DOM
                 const historyItems = historyList.querySelectorAll('.history-item');
-                historyItems.forEach(item => {
-                    item.classList.remove('selected');
-                });
-
-                // Clear selected history items set
+                historyItems.forEach(item => item.classList.remove('selected'));
                 this.selectedHistoryItems.clear();
 
                 if (versionIndex === 'current') {
-                    // Select the current version item (which is the first item)
                     const currentDiv = historyList.firstChild;
-                    if (currentDiv && currentDiv.classList.contains('history-item')) {
-                        currentDiv.classList.add('selected');
-                    }
+                    if (currentDiv && currentDiv.classList.contains('history-item')) currentDiv.classList.add('selected');
                     editContent.value = notes[noteId].content;
                     lastSavedContent = notes[noteId].content;
                 } else {
-                    // Select the specific version item
                     const versionDiv = historyList.children[versionIndex + 1];
-                    if (versionDiv && versionDiv.classList.contains('history-item')) {
-                        versionDiv.classList.add('selected');
-                    }
+                    if (versionDiv && versionDiv.classList.contains('history-item')) versionDiv.classList.add('selected');
                     editContent.value = notes[noteId].history[versionIndex].content;
                     lastSavedContent = notes[noteId].history[versionIndex].content;
                 }
-
                 updateForPreviewMode();
             }
 
-            /**
-             * Re-render the history list in the UI.
-             */
             updateList() {
                 historyList.innerHTML = '';
-
                 if (!currentNoteId || !notes[currentNoteId]) return;
 
                 const note = notes[currentNoteId];
-
-                // Add current version
                 const currentDiv = document.createElement('div');
                 currentDiv.className = 'history-item selected';
                 currentDiv.textContent = 'Current Version (auto saving)';
-                currentDiv.addEventListener('click', () => {
-                    this.select(currentNoteId, 'current');
-                });
+                currentDiv.addEventListener('click', () => this.select(currentNoteId, 'current'));
                 historyList.appendChild(currentDiv);
 
-                // Add version history
                 note.history.forEach((version, index) => {
                     const div = document.createElement('div');
                     div.className = 'history-item';
                     div.textContent = version.timestamp;
                     div.addEventListener('click', (e) => {
-                        // Handle multi-selection with Ctrl key
                         if (e.ctrlKey || e.metaKey) {
-                            if (this.selectedHistoryItems.has(index)) {
-                                this.selectedHistoryItems.delete(index);
-                                div.classList.remove('selected');
-                            } else {
-                                this.selectedHistoryItems.add(index);
-                                div.classList.add('selected');
-                            }
-                        } else {
-                            // Single selection
-                            this.select(currentNoteId, index);
-                        }
+                            if (this.selectedHistoryItems.has(index)) { this.selectedHistoryItems.delete(index); div.classList.remove('selected'); }
+                            else { this.selectedHistoryItems.add(index); div.classList.add('selected'); }
+                        } else { this.select(currentNoteId, index); }
                     });
-                    // Add right-click event listener for context menu
                     div.addEventListener('contextmenu', (e) => {
                         e.preventDefault();
-                        if (this.selectedHistoryItems.size > 0) {
-                            this.contextMenu.showBulkHistoryContextMenu(e, currentNoteId);
-                        } else {
-                            this.contextMenu.showHistoryContextMenu(e, currentNoteId, index);
-                        }
+                        if (this.selectedHistoryItems.size > 0) this.contextMenu.showBulkHistoryContextMenu(e, currentNoteId);
+                        else this.contextMenu.showHistoryContextMenu(e, currentNoteId, index);
                     });
                     historyList.appendChild(div);
                 });
             }
 
-            /**
-             * Clear all selected history items.
-             */
-            clearSelection() {
-                this.selectedHistoryItems.clear();
-            }
-
-            /**
-             * Get the number of selected history items.
-             */
-            getSelectedCount() {
-                return this.selectedHistoryItems.size;
-            }
+            clearSelection() { this.selectedHistoryItems.clear(); }
+            getSelectedCount() { return this.selectedHistoryItems.size; }
         }
 
-        // Global managers - initialized in init() with proper dependencies
-        let notesManager;
-        let historyManager;
-
         // ==================================================================
-        // CONTEXT MENU CLASS
-        // Handles right-click menus for notes and history versions
+        // CONTEXT MENU CLASS - Shared for notes and history
         // ==================================================================
 
-        /**
-         * ContextMenu class - shows context menu on right-click with appropriate actions.
-         */
         class ContextMenu {
             constructor(element) {
                 this.element = element;
@@ -876,102 +646,57 @@
                 this.element.style.display = 'block';
                 this.element.style.left = event.pageX + 'px';
                 this.element.style.top = event.pageY + 'px';
-
                 this.element.innerHTML = '';
                 items.forEach(({ label, action }) => {
                     const item = document.createElement('div');
                     item.className = 'context-menu-item';
                     item.textContent = label;
-                    item.addEventListener('click', () => {
-                        action();
-                        this.hide();
-                    });
+                    item.addEventListener('click', () => { action(); this.hide(); });
                     this.element.appendChild(item);
                 });
             }
 
-            /**
-             * Show context menu for a note (rename/delete).
-             * @param {Event} event - Right-click event
-             * @param {string} noteId - ID of the note
-             */
             showNoteContextMenu(event, noteId) {
                 this.show(event, [
-                    { label: 'Rename', action: () => notesManager.rename(noteId) },
+                    { label: 'Rename', action: () => contextMenu.rename(noteId, false) },
                     { label: 'Delete', action: async () => await notesManager.deleteAsync(noteId) }
                 ]);
             }
 
-            /**
-             * Show context menu for a history version (rename/delete).
-             * @param {Event} event - Right-click event
-             * @param {string} noteId - ID of the note
-             * @param {number|string} versionIndex - Index in history array or 'current'
-             */
             showHistoryContextMenu(event, noteId, versionIndex) {
                 this.currentNoteId = noteId;
-                this.element.style.display = 'block';
-                this.element.style.left = event.pageX + 'px';
-                this.element.style.top = event.pageY + 'px';
-
-                this.element.innerHTML = '';
-
-                // Rename option
-                const renameItem = document.createElement('div');
-                renameItem.className = 'context-menu-item';
-                renameItem.textContent = 'Rename';
-                renameItem.addEventListener('click', () => {
-                    this.hide();
-                    this.showInlineRenameUI(noteId, versionIndex);
-                });
-                this.element.appendChild(renameItem);
-
-                // Delete option - only show for versions, not current
+                const items = [];
                 if (typeof versionIndex !== 'string' || versionIndex !== 'current') {
-                    const deleteItem = document.createElement('div');
-                    deleteItem.className = 'context-menu-item';
-                    deleteItem.textContent = 'Delete';
-                    deleteItem.addEventListener('click', async () => {
-                        await historyManager.delete(noteId, versionIndex);
-                        this.hide();
-                    });
-                    this.element.appendChild(deleteItem);
+                    items.push({ label: 'Rename', action: () => contextMenu.rename(noteId, true, versionIndex) });
+                    items.push({ label: 'Delete Version', action: async () => await historyManager.delete(noteId, versionIndex) });
                 }
+                this.show(event, items);
             }
 
-            /**
-             * Show context menu for bulk history operations.
-             * @param {Event} event - Right-click event
-             * @param {string} noteId - ID of the note
-             */
             showBulkHistoryContextMenu(event, noteId) {
                 this.currentNoteId = noteId;
                 this.show(event, [{
                     label: `Delete Selected Versions (${historyManager.getSelectedCount()})`,
-                    action: async () => {
-                        await historyManager.bulkDelete(noteId);
-                        historyManager.updateList();
-                    }
+                    action: async () => { await historyManager.bulkDelete(noteId); historyManager.updateList(); }
                 }]);
             }
 
-            hide() {
-                this.element.style.display = 'none';
-            }
+            hide() { this.element.style.display = 'none'; }
 
-            /**
-             * Create inline rename UI for a history item.
-             * @param {HTMLElement} itemElement - The DOM element to replace
-             * @param {string} noteId - ID of the note
-             * @param {number|string} versionIndex - Index or 'current'
-             */
-            showInlineRenameUI(noteId, versionIndex) {
-                const historyItems = historyList.querySelectorAll('.history-item');
-                let itemElement;
-                if (versionIndex === 'current') {
-                    itemElement = historyItems[0];
-                } else {
-                    itemElement = historyItems[versionIndex + 1];
+            rename(itemId, isHistoryItem, versionIndex) {
+                const container = isHistoryItem ? historyList : notesList;
+                let itemElement = null;
+
+                if (isHistoryItem && typeof versionIndex === 'number') {
+                    itemElement = container.querySelectorAll('.history-item')[versionIndex + 1];
+                } else if (!isHistoryItem && notes[itemId]) {
+                    for (const div of container.querySelectorAll('.note-item')) {
+                        if (div.textContent === notes[itemId].title || 
+                            (notes[itemId].title && div.textContent.includes(notes[itemId].title))) {
+                            itemElement = div;
+                            break;
+                        }
+                    }
                 }
 
                 if (!itemElement) return;
@@ -981,7 +706,7 @@
 
                 const input = document.createElement('input');
                 input.type = 'text';
-                input.value = originalText;
+                input.value = isHistoryItem ? originalText : (notes[itemId].title || '');
                 input.className = 'inline-rename-input';
 
                 const saveBtn = document.createElement('button');
@@ -999,151 +724,92 @@
                 buttonContainer.appendChild(cancelBtn);
 
                 itemElement.appendChild(buttonContainer);
-
                 input.focus();
                 input.select();
 
                 const saveHandler = () => {
                     const newName = input.value.trim();
-                    if (newName !== '' && typeof versionIndex !== 'string') {
-                        historyManager.rename(noteId, versionIndex, newName);
-                    } else if (typeof versionIndex === 'string' && versionIndex === 'current') {
-                        // Current version cannot be renamed via this UI
+                    if (newName !== '') {
+                        if (isHistoryItem) {
+                            historyManager.rename(currentNoteId, versionIndex, newName);
+                            historyManager.updateList();
+                        } else {
+                            notes[itemId].title = newName;
+                            storageManager.saveNotes(notes);
+                            itemElement.textContent = newName;
+                        }
                     }
-                    historyManager.updateList();
                 };
 
                 const cancelHandler = () => {
-                    historyManager.updateList();
+                    if (isHistoryItem) historyManager.updateList();
+                    else this.showNoteContextMenu({ pageX: 0, pageY: 0 }, itemId); // Re-render
                 };
 
                 saveBtn.addEventListener('click', saveHandler);
                 cancelBtn.addEventListener('click', cancelHandler);
-
                 input.addEventListener('keypress', (e) => {
                     if (e.key === 'Enter') saveHandler();
                     else if (e.key === 'Escape') cancelHandler();
                 });
-
-                input.addEventListener('blur', saveHandler);
+                input.addEventListener('blur', () => setTimeout(saveHandler, 10));
             }
         }
 
-        // NOTES MANAGER CLASS (defined after ContextMenu since it depends on it)
-        // Handles all notes panel operations: create, delete, rename, select
+        // ==================================================================
+        // NOTES MANAGER CLASS
+        // ==================================================================
 
-        /**
-         * NotesManager class - handles all notes-related operations including
-         * creating, deleting, renaming notes and managing the UI list.
-         */
         class NotesManager {
             constructor(storageManager, historyManager) {
                 this.storageManager = storageManager;
                 this.historyManager = historyManager;
             }
 
-            /**
-             * Create a new note with timestamped title.
-             */
             create() {
                 log('Creating new note');
                 const now = new Date();
                 const dateTimeString = now.toLocaleString();
                 const noteId = Date.now().toString();
-
-                notes[noteId] = {
-                    title: `Note ${dateTimeString}`,
-                    content: '',
-                    history: []
-                };
-
+                notes[noteId] = { title: `Note ${dateTimeString}`, content: '', history: [] };
                 this.storageManager.saveNotes(notes);
                 this.updateList();
                 this.select(noteId);
                 log('Note created with ID:', noteId);
             }
 
-            /**
-             * Delete a note by ID - async version using ModalManager.
-             * @param {string} noteId - ID of the note to delete
-             */
             async deleteAsync(noteId) {
-                const confirmed = await modalManager.show(
-                    'Delete Note',
-                    `Are you sure you want to delete this note?`
-                );
-
-                if (confirmed) {
-                    this.deleteNoteInternal(noteId);
-                }
+                const confirmed = await modalManager.show('Delete Note', `Are you sure you want to delete this note?`);
+                if (confirmed) { this.deleteNoteInternal(noteId); }
             }
 
-            /**
-             * Internal delete logic - actually removes the note.
-             * @param {string} noteId - ID of the note to delete
-             */
             deleteNoteInternal(noteId) {
                 delete notes[noteId];
                 this.storageManager.saveNotes(notes);
                 this.updateList();
-
-                // If we deleted the current note, select another or clear editor
                 if (currentNoteId === noteId) {
                     const noteIds = Object.keys(notes);
-                    if (noteIds.length > 0) {
-                        this.select(noteIds[0]);
-                    } else {
-                        editContent.value = '';
-                        currentNoteId = null;
-                    }
+                    if (noteIds.length > 0) { this.select(noteIds[0]); }
+                    else { editContent.value = ''; currentNoteId = null; }
                 }
             }
 
-            /**
-             * Rename a note by ID.
-             * @param {string} noteId - ID of the note to rename
-             */
-            rename(noteId) {
-                const newTitle = prompt('Enter new title for the note:', notes[noteId].title);
-                if (newTitle !== null && newTitle.trim() !== '') {
-                    notes[noteId].title = newTitle;
-                    this.storageManager.saveNotes(notes);
-                    this.updateList();
-                }
-            }
+            rename(noteId) { contextMenu.rename(noteId, false); }
 
-            /**
-             * Select a note by ID, loading its content into the editor.
-             * @param {string} noteId - ID of the note to select
-             */
             select(noteId) {
                 if (!notes[noteId]) return;
-
                 currentNoteId = noteId;
                 this.loadContent(noteId);
                 this.updateList();
                 this.historyManager.updateList();
             }
 
-            /**
-             * Load a note's content into the editor.
-             * @param {string} noteId - ID of the note to load
-             */
             loadContent(noteId) {
-                if (notes[noteId]) {
-                    editContent.value = notes[noteId].content;
-                    lastSavedContent = notes[noteId].content;
-                    updateForPreviewMode();
-                }
+                if (notes[noteId]) { editContent.value = notes[noteId].content; lastSavedContent = notes[noteId].content; updateForPreviewMode(); }
             }
 
-            /**
-             * Re-render the notes list in the UI.
-             */
             updateList() {
                 notesList.innerHTML = '';
-
-                // Show empty state if no notes
                 if (Object.keys(notes).length === 0) {
                     const emptyState = document.createElement('div');
                     emptyState.className = 'empty-state';
@@ -1151,100 +817,58 @@
                     notesList.appendChild(emptyState);
                     return;
                 }
-
                 for (const [noteId, note] of Object.entries(notes)) {
                     const div = document.createElement('div');
                     div.className = 'note-item';
-                    if (currentNoteId === noteId) {
-                        div.classList.add('selected');
-                    }
+                    if (currentNoteId === noteId) div.classList.add('selected');
                     div.textContent = note.title || 'Untitled Note';
                     div.addEventListener('click', () => this.select(noteId));
-                    // Add right-click event listener for context menu
-                    div.addEventListener('contextmenu', (e) => {
-                        e.preventDefault();
-                        contextMenu.showNoteContextMenu(e, noteId);
-                    });
+                    div.addEventListener('contextmenu', (e) => { e.preventDefault(); contextMenu.showNoteContextMenu(e, noteId); });
                     notesList.appendChild(div);
                 }
             }
 
-            /**
-             * Import notes from a file.
-             */
             async import() {
                 log('Importing notes');
-
                 const fileInput = document.createElement('input');
                 fileInput.type = 'file';
                 fileInput.accept = '.json';
-
                 await new Promise((resolve, reject) => {
                     fileInput.onchange = async (e) => {
                         const file = e.target.files[0];
-                        if (!file) {
-                            log('No file selected');
-                            resolve();
-                            return;
-                        }
-
+                        if (!file) { log('No file selected'); resolve(); return; }
                         try {
                             const importedNotes = await this.storageManager.importFromFile(file);
                             notes = importedNotes;
                             this.storageManager.saveNotes(notes);
                             this.updateList();
-
-                            // Select the first note after import
                             const noteIds = Object.keys(notes);
-                            if (noteIds.length > 0) {
-                                currentNoteId = null; // Clear to trigger re-selection
-                                this.select(noteIds[0]);
-                            }
-
+                            if (noteIds.length > 0) { currentNoteId = null; this.select(noteIds[0]); }
                             log('Notes imported successfully');
                             resolve();
                         } catch (error) {
                             console.error('Error importing notes:', error);
-                            alert(error.message === 'Invalid file format' ?
-                                'Invalid file format. Please select a valid notes file.' :
-                                'Error importing notes: ' + error.message);
+                            alert(error.message === 'Invalid file format' ? 'Invalid file format. Please select a valid notes file.' : 'Error importing notes: ' + error.message);
                             reject(error);
                         }
                     };
-
                     fileInput.click();
                 });
             }
 
-            /**
-             * Export all notes to a file.
-             */
             async export() {
                 log('Exporting notes');
-                try {
-                    await this.storageManager.exportToFile(notes, null);
-                    log('Notes exported successfully');
-                } catch (error) {
-                    console.error('Error exporting notes:', error);
-                }
+                try { await this.storageManager.exportToFile(notes, null); log('Notes exported successfully'); }
+                catch (error) { console.error('Error exporting notes:', error); }
             }
 
-            /**
-             * Get the current selected note ID.
-             */
-            getCurrentId() {
-                return currentNoteId;
-            }
+            getCurrentId() { return currentNoteId; }
         }
 
         // ==================================================================
         // EDIT PANEL FUNCTIONS
-        // Handles editing, preview, and zoom operations
         // ==================================================================
 
-        /**
-         * Apply current zoom level to edit textarea and preview.
-         */
         function applyEditZoom() {
             const size = editFontSizePx + 'px';
             editContent.style.fontSize = size;
@@ -1252,59 +876,28 @@
             if (previewDiv) previewDiv.style.fontSize = size;
         }
 
-        /**
-         * Increase zoom level for the editor.
-         */
         function editZoomIn() {
-            if (editFontSizePx < EDIT_ZOOM_MAX) {
-                editFontSizePx = Math.min(EDIT_ZOOM_MAX, editFontSizePx + EDIT_ZOOM_STEP);
-                storageManager.saveZoom(editFontSizePx);
-                applyEditZoom();
-            }
+            if (editFontSizePx < EDIT_ZOOM_MAX) { editFontSizePx = Math.min(EDIT_ZOOM_MAX, editFontSizePx + EDIT_ZOOM_STEP); storageManager.saveZoom(editFontSizePx); applyEditZoom(); }
         }
 
-        /**
-         * Decrease zoom level for the editor.
-         */
         function editZoomOut() {
-            if (editFontSizePx > EDIT_ZOOM_MIN) {
-                editFontSizePx = Math.max(EDIT_ZOOM_MIN, editFontSizePx - EDIT_ZOOM_STEP);
-                storageManager.saveZoom(editFontSizePx);
-                applyEditZoom();
-            }
+            if (editFontSizePx > EDIT_ZOOM_MIN) { editFontSizePx = Math.max(EDIT_ZOOM_MIN, editFontSizePx - EDIT_ZOOM_STEP); storageManager.saveZoom(editFontSizePx); applyEditZoom(); }
         }
 
-        /**
-         * Toggle between source and preview view.
-         */
-        function editToggleView() {
-            currentView = (currentView === 'source') ? 'preview' : 'source';
-            updateForPreviewMode();
-        }
+        function editToggleView() { currentView = (currentView === 'source') ? 'preview' : 'source'; updateForPreviewMode(); }
 
-        /**
-         * Update UI based on current view mode (source/preview).
-         */
         function updateForPreviewMode() {
             if (currentView === 'preview') {
-                // Show preview - using marked.js for markdown rendering
                 let markdownContent = marked.parse(editContent.value);
                 markdownContent = renderMathWithKaTeX(markdownContent);
-
                 let previewDiv = document.getElementById('markdownPreview');
-                if (!previewDiv) {
-                    previewDiv = document.createElement('div');
-                    previewDiv.className = 'markdown-view';
-                    previewDiv.id = 'markdownPreview';
-                    editPanel.appendChild(previewDiv);
-                }
+                if (!previewDiv) { previewDiv = document.createElement('div'); previewDiv.className = 'markdown-view'; previewDiv.id = 'markdownPreview'; editPanel.appendChild(previewDiv); }
                 previewDiv.innerHTML = markdownContent;
                 applyEditZoom();
                 editContent.style.display = 'none';
                 toggleViewBtn.textContent = 'Source';
                 saveBtn.style.display = 'none';
             } else {
-                // Show source
                 const previewDiv = document.getElementById('markdownPreview');
                 if (previewDiv) previewDiv.remove();
                 editContent.style.display = 'block';
@@ -1313,71 +906,36 @@
             }
         }
 
-        /**
-         * Render math formulas with KaTeX in HTML content.
-         * @param {string} htmlContent - HTML string containing math
-         */
         function renderMathWithKaTeX(htmlContent) {
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = htmlContent;
-
             const mathElements = tempDiv.querySelectorAll('p, li, div');
-
             mathElements.forEach(element => {
                 const text = element.textContent;
                 if (text.includes('$') || text.includes('$$')) {
                     let content = element.innerHTML;
-                    // Inline math: $...$
-                    content = content.replace(/\$(.*?)\$/g, (match, math) => {
-                        try {
-                            return katex.renderToString(math, { displayMode: false });
-                        } catch (error) {
-                            return match;
-                        }
-                    });
-                    // Display math: $$...$$
-                    content = content.replace(/\$\$(.*?)\$\$/g, (match, math) => {
-                        try {
-                            return katex.renderToString(math, { displayMode: true });
-                        } catch (error) {
-                            return match;
-                        }
-                    });
+                    content = content.replace(/\$(.*?)\$/g, (match, math) => { try { return katex.renderToString(math, { displayMode: false }); } catch (error) { return match; } });
+                    content = content.replace(/\$\$(.*?)\$\$/g, (match, math) => { try { return katex.renderToString(math, { displayMode: true }); } catch (error) { return match; } });
                     element.innerHTML = content;
                 }
             });
-
             return tempDiv.innerHTML;
         }
 
-        /**
-         * Save current edit content and create a new history version.
-         */
         function editSave() {
             if (!currentNoteId || !notes[currentNoteId]) return;
-
-            const content = editContent.value;
-            notes[currentNoteId].content = content;
-            lastSavedContent = content;
+            notes[currentNoteId].content = editContent.value;
+            lastSavedContent = editContent.value;
             storageManager.saveNotes(notes);
-
-            // Create new version in history only when save button is clicked
             historyManager.create(currentNoteId);
             historyManager.updateList();
         }
 
-        /**
-         * Handle input in edit panel for auto-save.
-         */
         function handleEditInput() {
             storageManager.initAutoSave(() => {
                 if (currentNoteId && notes[currentNoteId]) {
                     const content = editContent.value;
-                    if (content !== lastSavedContent) {
-                        notes[currentNoteId].content = content;
-                        lastSavedContent = content;
-                        storageManager.saveNotes(notes);
-                    }
+                    if (content !== lastSavedContent) { notes[currentNoteId].content = content; lastSavedContent = content; storageManager.saveNotes(notes); }
                 }
             }, 300);
         }
@@ -1386,89 +944,30 @@
         // SETUP EVENT LISTENERS
         // ==================================================================
 
-        /**
-         * Set up all event listeners for the application.
-         */
         function setupEventListeners() {
             log('Setting up event listeners');
-
-            // Create note button
-            if (createNoteBtn) {
-                createNoteBtn.addEventListener('click', () => notesManager.create());
-                log('Create note button listener set');
-            }
-
-            // Import/Export buttons
-            if (importNotesBtn) {
-                importNotesBtn.addEventListener('click', () => notesManager.import());
-                log('Import notes button listener set');
-            }
-            if (exportNotesBtn) {
-                exportNotesBtn.addEventListener('click', () => notesManager.export());
-                log('Export notes button listener set');
-            }
-
-            // Edit content input (auto-save)
-            if (editContent) {
-                editContent.addEventListener('input', handleEditInput);
-                log('Edit content input listener set');
-            }
-
-            // View toggle
-            if (toggleViewBtn) {
-                toggleViewBtn.addEventListener('click', editToggleView);
-                log('Toggle view button listener set');
-            }
-
-            // Save button
-            if (saveBtn) {
-                saveBtn.addEventListener('click', editSave);
-                log('Save button listener set');
-            }
-
-            // Zoom buttons
+            if (createNoteBtn) { createNoteBtn.addEventListener('click', () => notesManager.create()); log('Create note button listener set'); }
+            if (importNotesBtn) { importNotesBtn.addEventListener('click', () => notesManager.import()); log('Import notes button listener set'); }
+            if (exportNotesBtn) { exportNotesBtn.addEventListener('click', () => notesManager.export()); log('Export notes button listener set'); }
+            if (editContent) { editContent.addEventListener('input', handleEditInput); log('Edit content input listener set'); }
+            if (toggleViewBtn) { toggleViewBtn.addEventListener('click', editToggleView); log('Toggle view button listener set'); }
+            if (saveBtn) { saveBtn.addEventListener('click', editSave); log('Save button listener set'); }
             if (zoomInBtn) zoomInBtn.addEventListener('click', editZoomIn);
             if (zoomOutBtn) zoomOutBtn.addEventListener('click', editZoomOut);
 
-            // Resize handle
             const resizeHandle = document.getElementById('resizeHandle');
             if (resizeHandle) {
                 let isResizing = false;
                 let startX, startWidth;
-
-                resizeHandle.addEventListener('mousedown', function(e) {
-                    isResizing = true;
-                    startX = e.clientX;
-                    startWidth = notesPanel.offsetWidth;
-                    e.preventDefault();
-                });
-
-                document.addEventListener('mousemove', function(e) {
-                    if (!isResizing) return;
-
-                    const newWidth = startWidth + (e.clientX - startX);
-                    if (newWidth > 100 && newWidth < window.innerWidth * 0.8) {
-                        notesPanel.style.width = newWidth + 'px';
-                        editPanel.style.width = (window.innerWidth - newWidth - resizeHandle.offsetWidth) + 'px';
-                    }
-                });
-
-                document.addEventListener('mouseup', function() {
-                    isResizing = false;
-                });
-
+                resizeHandle.addEventListener('mousedown', function(e) { isResizing = true; startX = e.clientX; startWidth = notesPanel.offsetWidth; e.preventDefault(); });
+                document.addEventListener('mousemove', function(e) { if (!isResizing) return; const newWidth = startWidth + (e.clientX - startX); if (newWidth > 100 && newWidth < window.innerWidth * 0.8) { notesPanel.style.width = newWidth + 'px'; editPanel.style.width = (window.innerWidth - newWidth - resizeHandle.offsetWidth) + 'px'; } });
+                document.addEventListener('mouseup', function() { isResizing = false; });
                 log('Resize handle listeners set');
             }
 
-            // Hide context menu on outside click
-            document.addEventListener('click', (e) => {
-                if (!contextMenu.element.contains(e.target)) {
-                    contextMenu.hide();
-                }
-            });
+            document.addEventListener('click', (e) => { if (!contextMenu.element.contains(e.target)) contextMenu.hide(); });
             log('Global click listener set');
 
-            // Modal buttons event listeners
             btnConfirm.addEventListener('click', () => modalManager.handleAccept());
             btnCancel.addEventListener('click', () => modalManager.handleReject());
         }
@@ -1477,42 +976,22 @@
         // INITIALIZATION
         // ==================================================================
 
-        /**
-         * Initialize the application.
-         */
         function init() {
             log('Initializing application');
-
-            const defaultData = {
-                [Date.now().toString()]: {
-                    title: 'Default Note',
-                    content: '# Welcome to Markdown Notebook\n\nStart writing your notes here...',
-                    history: []
-                }
-            };
-
-            // Initialize managers with dependencies
+            const defaultData = { [Date.now().toString()]: { title: 'Default Note', content: '# Welcome to Markdown Notebook\n\nStart writing your notes here...', history: [] } };
             contextMenu = new ContextMenu(document.getElementById('contextMenu'));
             historyManager = new HistoryManager(storageManager, contextMenu);
             notesManager = new NotesManager(storageManager, historyManager);
-
             notes = storageManager.loadNotes(defaultData);
             editFontSizePx = storageManager.loadZoom(EDIT_ZOOM_MIN, EDIT_ZOOM_MAX, 14);
-
             notesManager.updateList();
             setupEventListeners();
-
-            // Automatically select the first note if no currentNoteId is set
             const noteIds = Object.keys(notes);
-            if (noteIds.length > 0 && !currentNoteId) {
-                notesManager.select(noteIds[0]);
-            }
-
+            if (noteIds.length > 0 && !currentNoteId) { notesManager.select(noteIds[0]); }
             applyEditZoom();
             log('Application initialized');
         }
 
-        // Initialize when page loads
         window.addEventListener('load', init);
     </script>
 </body>
