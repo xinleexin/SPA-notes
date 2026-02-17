@@ -121,55 +121,6 @@ All state persists to `localStorage`:
 
 ---
 
-## Chess SPA State Management
-
-- **`board`**: 8x8 array of `{type, color}` objects or null
-- **`currentTurn`**: 'white' or 'black'
-- **`botDifficulty`**: 'easy', 'medium', or 'hard'
-- **`selectedSquare`**, **`legalMoves`**, **`moveHistory`**, etc.
-
-**Persistence**: Chess state persists to `localStorage` under key `'chessGame'`.
-
-### Chess SPA Components
-
-| Component | Description |
-|-----------|-------------|
-| **Board panel** | 8x8 grid with chess pieces, coordinates |
-| **History panel** | Move history list, difficulty dropdown (Easy/Medium/Hard) |
-| **Buttons** | New Game, Save/Load Game, Reset Position |
-
-### Chess Bot Difficulty Levels
-
-#### Easy (0-ply - Random)
-- Picks random legal moves
-- Slight randomness factor for variety
-
-#### Medium (2-ply with piece-square tables)
-- Current 2-ply search implementation
-- Evaluates position after each initial move
-- Uses piece-square tables for positional awareness
-
-#### Hard (3-ply minimax)
-- For each initial white move:
-  - Simulate the move
-  - Find black's best response (minimize white's score)
-  - Evaluate resulting position after white's second move
-- Considers deeper calculation and threat blocking
-
-### Chess SPA Key Functions
-
-#### Bot AI Functions
-- `botMakeMove()` - Select and execute bot move based on difficulty
-- `evaluateBoard(board, botColor)` - Score position using piece values + positional tables
-- `getAllLegalMovesForColor(color)` - Get all legal moves for a color
-- `makeMoveOnBoard(from, to)` / `undoMoveOnBoard(savedState)` - Simulate/undo moves for search
-
-#### State Persistence
-- `autoSave()` - Save to localStorage
-- `saveGame()` / `loadGame()` - File-based export/import with File System Access API fallback
-
----
-
 ## Testing Approach
 
 **TDD workflow** for new features:
@@ -185,6 +136,29 @@ All state persists to `localStorage`:
 - **Integration**: test DOM + state interaction
 - **E2E**: browser automation for user flows
 
+### Testing Best Practices (MCP Tools)
+
+When using Chrome DevTools MCP tools, ensure proper JSON formatting in tool calls:
+
+**Correct format:**
+```xml
+<use_mcp_tool>
+<server_name>chrome-devtools-mcp</server_name>
+<tool_name>navigate_page</tool_name>
+<arguments>
+{
+  "type": "url",
+  "url": "file:///path/to/file.html"
+}
+</arguments>
+</use_mcp_tool>
+```
+
+**Key points:**
+- Use `</arguments>` (not `</args>`) for closing tag
+- Arguments content must be valid JSON with proper quotes and brackets
+- All parameters should be inside the `<arguments>` block
+
 ---
 
 ## Project-Specific Best Practices
@@ -193,6 +167,25 @@ All state persists to `localStorage`:
 - Use dedicated tools (`Read`, `Edit`, `Write`, `Glob`, `Grep`) for file operations
 - Avoid `sed`, `cat`, `grep`, `find` commands - use Claude Code's built-in tools
 - These tools are safer, more precise, and provide better error handling
+
+### Chrome DevTools MCP Testing
+When testing with chrome-devtools-mcp:
+
+1. **Modal dialogs**: Replace native `confirm()` with custom DOM-based modals for testability:
+   ```javascript
+   class ModalManager {
+     show(title, message) {
+       return new Promise(resolve => {
+         // Show modal UI and resolve on button click
+       });
+     }
+   }
+   ```
+
+2. **Testing workflow**:
+   - Navigate to page → Take snapshot → Click elements → Verify state changes
+
+3. **Avoid blocking dialogs**: Native `confirm()` blocks execution and cannot be handled by MCP tools; use async Promise-based modals instead.
 
 ### Chess SPA Specifics
 - **Auto-save vs Manual save**: Separate logic - `autoSave()` for silent localStorage persistence, `saveGame()` for user-triggered file export
