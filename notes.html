@@ -263,7 +263,6 @@
         let currentView = 'source'; // 'source' or 'preview'
         let lastSavedContent = '';
         let debugMode = true; // Enable/disable console logs
-        let selectedHistoryItems = new Set(); // Track multiple selected history items
         const EDIT_ZOOM_MIN = 10;
         const EDIT_ZOOM_MAX = 24;
         const EDIT_ZOOM_STEP = 2;
@@ -343,7 +342,6 @@
             constructor(element) {
                 this.element = element;
                 this.currentNoteId = null;
-                this.selectedHistoryItems = new Set();
                 this.onRenameComplete = null;
                 this.onDeleteComplete = null;
             }
@@ -411,7 +409,7 @@
                     deleteItem.textContent = 'Delete';
                     deleteItem.addEventListener('click', () => {
                         if (confirm('Are you sure you want to delete this version?')) {
-                            historyDelete(noteId, versionId);
+                            historyManager.delete(noteId, versionId);
                         }
                         this.hide();
                     });
@@ -422,17 +420,17 @@
             showBulkHistoryContextMenu(event, noteId) {
                 this.currentNoteId = noteId;
                 this.show(event, [{
-                    label: `Delete Selected Versions (${this.selectedHistoryItems.size})`,
+                    label: `Delete Selected Versions (${historyManager.getSelectedCount()})`,
                     action: () => {
-                        if (confirm(`Are you sure you want to delete ${this.selectedHistoryItems.size} selected versions?`)) {
+                        if (confirm(`Are you sure you want to delete ${historyManager.getSelectedCount()} selected versions?`)) {
                             // Delete all selected versions
-                            const sortedIndices = Array.from(this.selectedHistoryItems).sort((a, b) => b - a);
+                            const sortedIndices = Array.from(historyManager.selectedHistoryItems).sort((a, b) => b - a);
                             sortedIndices.forEach(index => {
-                                historyDelete(noteId, index);
+                                historyManager.delete(noteId, index);
                             });
-                            this.selectedHistoryItems.clear();
+                            historyManager.clearSelection();
                         }
-                        updateHistoryList();
+                        historyManager.updateList();
                     }
                 }]);
             }
@@ -477,14 +475,14 @@
                         if (typeof versionId === 'string' && versionId === 'current') {
                             // For current version, we don't actually rename it
                         } else {
-                            historyRename(noteId, versionId, newName);
+                            historyManager.rename(noteId, versionId, newName);
                         }
                     }
-                    updateHistoryList();
+                    historyManager.updateList();
                 };
 
                 const cancelHandler = () => {
-                    updateHistoryList();
+                    historyManager.updateList();
                 };
 
                 saveBtn.addEventListener('click', saveHandler);
@@ -742,6 +740,181 @@
         // Global storage manager instance
         const storageManager = new StorageManager();
 
+        /**
+         * HistoryManager class - handles all history operations including creating,
+         * deleting, renaming versions, and managing the UI state.
+         */
+        class HistoryManager {
+            constructor(storageManager, contextMenu) {
+                this.storageManager = storageManager;
+                this.contextMenu = contextMenu;
+                this.selectedHistoryItems = new Set(); // Track multiple selected history items
+            }
+
+            /**
+             * Create a new version for a note.
+             * @param {string} noteId - ID of the note to create version for
+             */
+            create(noteId) {
+                if (!notes[noteId]) return;
+
+                const now = new Date();
+                let timestamp = now.toLocaleString();
+
+                // Check if this timestamp already exists and make it unique
+                let counter = 1;
+                const originalTimestamp = timestamp;
+                while (notes[noteId].history.some(v => v.timestamp === timestamp)) {
+                    timestamp = `${originalTimestamp} (${counter})`;
+                    counter++;
+                }
+
+                const version = {
+                    timestamp: timestamp,
+                    content: notes[noteId].content
+                };
+                notes[noteId].history.unshift(version);
+                // Keep only last 20 versions
+                if (notes[noteId].history.length > 20) {
+                    notes[noteId].history = notes[noteId].history.slice(0, 20);
+                }
+                this.storageManager.saveNotes(notes);
+            }
+
+            /**
+             * Delete a specific version from a note's history.
+             * @param {string} noteId - ID of the note
+             * @param {number} versionIndex - Index of the version to delete (0-based in history array)
+             */
+            delete(noteId, versionIndex) {
+                if (!notes[noteId] || !notes[noteId].history[versionIndex]) return;
+
+                notes[noteId].history.splice(versionIndex, 1);
+                this.storageManager.saveNotes(notes);
+                this.updateList();
+            }
+
+            /**
+             * Rename a version's timestamp.
+             * @param {string} noteId - ID of the note
+             * @param {number} versionIndex - Index of the version to rename
+             * @param {string} newName - New timestamp name
+             */
+            rename(noteId, versionIndex, newName) {
+                if (!notes[noteId] || !notes[noteId].history[versionIndex]) return;
+
+                notes[noteId].history[versionIndex].timestamp = newName;
+                this.storageManager.saveNotes(notes);
+                this.updateList();
+            }
+
+            /**
+             * Select and load a specific version into the editor.
+             * @param {string} noteId - ID of the note
+             * @param {string|number} versionIndex - 'current' or index in history array
+             */
+            select(noteId, versionIndex) {
+                // Clear previous selections from DOM
+                const historyItems = historyList.querySelectorAll('.history-item');
+                historyItems.forEach(item => {
+                    item.classList.remove('selected');
+                });
+
+                // Clear selected history items set
+                this.selectedHistoryItems.clear();
+
+                if (versionIndex === 'current') {
+                    // Select the current version item (which is the first item)
+                    const currentDiv = historyList.firstChild;
+                    if (currentDiv && currentDiv.classList.contains('history-item')) {
+                        currentDiv.classList.add('selected');
+                    }
+                    editContent.value = notes[noteId].content;
+                    lastSavedContent = notes[noteId].content;
+                } else {
+                    // Select the specific version item
+                    const versionDiv = historyList.children[versionIndex + 1];
+                    if (versionDiv && versionDiv.classList.contains('history-item')) {
+                        versionDiv.classList.add('selected');
+                    }
+                    editContent.value = notes[noteId].history[versionIndex].content;
+                    lastSavedContent = notes[noteId].history[versionIndex].content;
+                }
+
+                updateForPreviewMode();
+            }
+
+            /**
+             * Re-render the history list in the UI.
+             */
+            updateList() {
+                historyList.innerHTML = '';
+
+                if (!currentNoteId || !notes[currentNoteId]) return;
+
+                const note = notes[currentNoteId];
+
+                // Add current version
+                const currentDiv = document.createElement('div');
+                currentDiv.className = 'history-item selected';
+                currentDiv.textContent = 'Current Version (auto saving)';
+                currentDiv.addEventListener('click', () => {
+                    this.select(currentNoteId, 'current');
+                });
+                historyList.appendChild(currentDiv);
+
+                // Add version history
+                note.history.forEach((version, index) => {
+                    const div = document.createElement('div');
+                    div.className = 'history-item';
+                    div.textContent = version.timestamp;
+                    div.addEventListener('click', (e) => {
+                        // Handle multi-selection with Ctrl key
+                        if (e.ctrlKey || e.metaKey) {
+                            if (this.selectedHistoryItems.has(index)) {
+                                this.selectedHistoryItems.delete(index);
+                                div.classList.remove('selected');
+                            } else {
+                                this.selectedHistoryItems.add(index);
+                                div.classList.add('selected');
+                            }
+                        } else {
+                            // Single selection
+                            this.select(currentNoteId, index);
+                        }
+                    });
+                    // Add right-click event listener for context menu
+                    div.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        // If multiple items are selected, show delete option for all
+                        if (this.selectedHistoryItems.size > 0) {
+                            this.contextMenu.showBulkHistoryContextMenu(e, currentNoteId);
+                        } else {
+                            this.contextMenu.showHistoryContextMenu(e, currentNoteId, index);
+                        }
+                    });
+                    historyList.appendChild(div);
+                });
+            }
+
+            /**
+             * Clear all selected history items.
+             */
+            clearSelection() {
+                this.selectedHistoryItems.clear();
+            }
+
+            /**
+             * Get the number of selected history items.
+             */
+            getSelectedCount() {
+                return this.selectedHistoryItems.size;
+            }
+        }
+
+        // Instantiate history manager
+        const historyManager = new HistoryManager(storageManager, contextMenu);
+
         // Setup event listeners
         function setupEventListeners() {
             log('Setting up event listeners');
@@ -955,8 +1128,7 @@
                 currentNoteId = noteId;
                 editLoad(noteId);
                 updateNotesList();
-                historyList.innerHTML = '';
-                updateHistoryList();
+                historyManager.updateList();
             }
         }
 
@@ -1097,139 +1269,11 @@
                     storageManager.saveNotes(notes);
 
                     // Create new version in history only when save button is clicked
-                    historyCreate(currentNoteId);
+                    historyManager.create(currentNoteId);
 
                     // Update history panel
-                    updateHistoryList();
+                    historyManager.updateList();
             }
-        }
-
-        // History panel functions
-        function historyCreate(noteId) {
-            if (notes[noteId]) {
-                const now = new Date();
-                // Create a unique timestamp to avoid duplicates
-                let timestamp = now.toLocaleString();
-
-                // Check if this timestamp already exists and make it unique
-                let counter = 1;
-                const originalTimestamp = timestamp;
-                while (notes[noteId].history.some(v => v.timestamp === timestamp)) {
-                    timestamp = `${originalTimestamp} (${counter})`;
-                    counter++;
-                }
-
-                const version = {
-                    timestamp: timestamp,
-                    content: notes[noteId].content
-                };
-                notes[noteId].history.unshift(version);
-                // Keep only last 20 versions
-                if (notes[noteId].history.length > 20) {
-                    notes[noteId].history = notes[noteId].history.slice(0, 20);
-                }
-                storageManager.saveNotes(notes);
-            }
-        }
-
-        function historyDelete(noteId, versionId) {
-            if (notes[noteId] && notes[noteId].history[versionId]) {
-                // Remove the specific version
-                notes[noteId].history.splice(versionId, 1);
-                storageManager.saveNotes(notes);
-                updateHistoryList();
-            }
-        }
-
-        function historyRename(noteId, versionId, newName) {
-            if (notes[noteId] && notes[noteId].history[versionId]) {
-                notes[noteId].history[versionId].timestamp = newName;
-                storageManager.saveNotes(notes);
-                updateHistoryList();
-            }
-        }
-
-        function updateHistoryList() {
-            historyList.innerHTML = '';
-            
-            if (currentNoteId && notes[currentNoteId]) {
-                const note = notes[currentNoteId];
-                
-                // Add current version
-                const currentDiv = document.createElement('div');
-                currentDiv.className = 'history-item selected';
-                currentDiv.textContent = 'Current Version (auto saving)';
-                currentDiv.addEventListener('click', () => {
-                    historyVersionSelect(currentNoteId, 'current');
-                });
-                // Do NOT add right-click event listener for context menu on current version
-                historyList.appendChild(currentDiv);
-                
-                // Add version history
-                note.history.forEach((version, index) => {
-                    const div = document.createElement('div');
-                    div.className = 'history-item';
-                    div.textContent = version.timestamp;
-                    div.addEventListener('click', (e) => {
-                        // Handle multi-selection with Ctrl key
-                        if (e.ctrlKey || e.metaKey) {
-                            if (selectedHistoryItems.has(index)) {
-                                selectedHistoryItems.delete(index);
-                                div.classList.remove('selected');
-                            } else {
-                                selectedHistoryItems.add(index);
-                                div.classList.add('selected');
-                            }
-                        } else {
-                            // Single selection
-                            historyVersionSelect(currentNoteId, index);
-                        }
-                    });
-                    // Add right-click event listener for context menu
-                    div.addEventListener('contextmenu', (e) => {
-                        e.preventDefault();
-                        // If multiple items are selected, show delete option for all
-                        if (selectedHistoryItems.size > 0) {
-                            contextMenu.showBulkHistoryContextMenu(e, currentNoteId);
-                        } else {
-                            contextMenu.showHistoryContextMenu(e, currentNoteId, index);
-                        }
-                    });
-                    historyList.appendChild(div);
-                });
-            }
-        }
-
-        function historyVersionSelect(noteId, versionIndex) {
-            // Clear previous selections
-            const historyItems = historyList.querySelectorAll('.history-item');
-            historyItems.forEach(item => {
-                item.classList.remove('selected');
-            });
-            
-            // Clear selected history items set
-            selectedHistoryItems.clear();
-            
-            // Select the clicked item
-            if (versionIndex === 'current') {
-                // Select the current version item (which is the first item)
-                const currentDiv = historyList.firstChild;
-                if (currentDiv && currentDiv.classList.contains('history-item')) {
-                    currentDiv.classList.add('selected');
-                }
-                editContent.value = notes[noteId].content;
-                lastSavedContent = notes[noteId].content;
-            } else {
-                // Select the specific version item
-                const versionDiv = historyList.children[versionIndex + 1]; // +1 because of current version
-                if (versionDiv && versionDiv.classList.contains('history-item')) {
-                    versionDiv.classList.add('selected');
-                }
-                editContent.value = notes[noteId].history[versionIndex].content;
-                lastSavedContent = notes[noteId].history[versionIndex].content;
-            }
-
-            updateForPreviewMode();
         }
 
         // Initialize the application when the page loads
