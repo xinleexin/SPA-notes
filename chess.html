@@ -1218,7 +1218,8 @@
 
         function recordMove(from, to, piece, captured) {
             const columns = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
-            const rows = ['1', '2', '3', '4', '5', '6', '7', '8'];
+            // Row 0 is rank "8" (black back rank), row 7 is rank "1" (white front rank)
+            const rows = ['8', '7', '6', '5', '4', '3', '2', '1'];
 
             let notation = '';
             if (piece.type !== 'p') {
@@ -1302,7 +1303,7 @@
                     if (col === 0) {
                         const rankCoord = document.createElement('span');
                         rankCoord.className = 'coord-rank';
-                        rankCoord.textContent = rows[7 - row];
+                        rankCoord.textContent = rows[row];
                         square.appendChild(rankCoord);
                     }
                     if (row === 7) {
@@ -2043,7 +2044,7 @@
 
         // Quiescence search: evaluate position considering only captures
         // Returns a quick evaluation that accounts for immediate tactical threats
-        function evaluateBoardWithCaptures(color) {
+function evaluateBoardWithCaptures(color) {
             const moves = getAllLegalMovesForColor(color);
 
             // Filter capture moves (including en passant)
@@ -2061,12 +2062,16 @@
                 }
             }
 
-            const baseScore = evaluateBoard(board, color === 'white' ? 'black' : 'white');
+            const baseScore = evaluateBoard(board, color);
             // Add a bonus for having good capture opportunities
             return baseScore + (color === 'black' ? Math.min(bestCaptureValue, 500) : -Math.min(bestCaptureValue, 500));
         }
 
 function minimax(color, depth) {
+            // Save current king positions for this level
+            const savedWhiteKingPos = { ...whiteKingPos };
+            const savedBlackKingPos = { ...blackKingPos };
+
             const moves = getAllLegalMovesForColor(color);
 
             // Terminal node - check for game over (checkmate or stalemate)
@@ -2080,30 +2085,58 @@ function minimax(color, depth) {
 
             // Max depth reached - use quiescence search (evaluate with capture extension)
             if (depth === 0) {
-                return evaluateBoardWithCaptures(color);
+                const score = evaluateBoardWithCaptures(color);
+                
+                // Restore king positions before returning
+                whiteKingPos = savedWhiteKingPos;
+                blackKingPos = savedBlackKingPos;
+                
+                return score;
             }
+
+            let bestScore;
 
             if (color === 'black') {
                 // Maximize for black
-                let bestScore = -Infinity;
+                bestScore = -Infinity;
                 for (const move of moves) {
                     const savedState = makeMoveOnBoard(move.from, move.to);
+                    
+                    // Save king positions after this move before recursive call
+                    const localWhitePos = { ...whiteKingPos };
+                    const localBlackPos = { ...blackKingPos };
+                    
                     const score = minimax('white', depth - 1);
                     undoMoveOnBoard(savedState);
+                    
+                    // Restore original king positions for next iteration
+                    whiteKingPos = savedWhiteKingPos;
+                    blackKingPos = savedBlackKingPos;
+                    
                     bestScore = Math.max(bestScore, score);
                 }
-                return bestScore;
             } else {
                 // Minimize for white
-                let bestScore = Infinity;
+                bestScore = Infinity;
                 for (const move of moves) {
                     const savedState = makeMoveOnBoard(move.from, move.to);
+                    
+                    // Save king positions after this move before recursive call
+                    const localWhitePos = { ...whiteKingPos };
+                    const localBlackPos = { ...blackKingPos };
+                    
                     const score = minimax('black', depth - 1);
                     undoMoveOnBoard(savedState);
+                    
+                    // Restore original king positions for next iteration
+                    whiteKingPos = savedWhiteKingPos;
+                    blackKingPos = savedBlackKingPos;
+                    
                     bestScore = Math.min(bestScore, score);
                 }
-                return bestScore;
             }
+            
+            return bestScore;
         }
 
         // Start the game
