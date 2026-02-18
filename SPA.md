@@ -187,6 +187,55 @@ When testing with chrome-devtools-mcp:
 
 3. **Avoid blocking dialogs**: Native `confirm()` blocks execution and cannot be handled by MCP tools; use async Promise-based modals instead.
 
+### Chess SPA Testing (chess-test.md)
+
+#### Test Files
+- `chess.html` - Main chess application with bot AI support  
+- `chess-test.md` - Comprehensive test cases using Chrome DevTools MCP
+
+#### Test Scenarios Covered
+1. **Create New Game**: Validate board is loaded correctly with all pieces in starting positions
+2. **No Bot Mode (Human vs Human)**: Test white moves, black moves, timer display, and move history  
+3. **Easy Bot Mode**: Test white moves followed by random bot response
+4. **Hard Bot Mode**: Test white moves followed by strategic minimax bot response
+
+#### Key MCP-Ready Elements
+| Element | ID | Purpose |
+|---------|-----|---------|
+| Chess Board Grid | `mcp-board-grid-8x8` | Main board container for testing piece positions |
+| Game Status Display | `mcp-status-display` | Current turn status and game state messages |
+| Bot Difficulty Select | `mcp-bot-difficulty-select` | Dropdown to set bot difficulty level (none/easy/medium/hard) |
+| New Game Button | `mcp-btn-new-game` | Reset game state with confirmation dialog |
+| Save Game Button | `mcp-btn-save-game` | Export game to JSON file |
+| Load Game Button | `mcp-btn-load-game` | Import game from JSON file |
+| Reset Position Button | `mcp-btn-reset-position` | Reset board while keeping game active |
+
+#### Test API (window.chessTestAPI)
+```javascript
+{
+  getBoardState: () => chessGame.board.grid,     // Get current piece positions as 8x8 array
+  getCurrentTurn: () => chessGame.gameState.currentTurn,
+  getSelectedSquare: () => chessGame.selectedSquare,
+  getLegalMoves: (row, col) => chessGame.getLegalMoves(row, col),
+  getMoveHistory: () => chessGame.moveHistory,
+  isGameActive: () => chessGame.gameActive
+}
+```
+
+#### Testing Workflow Using MCP Tools
+1. **Navigate**: `navigate_page({type: 'url', url: 'file:///path/to/chess.html'})`
+2. **Snapshot**: Use `take_snapshot()` to get element UIDs for buttons/boards
+3. **Query State**: Use `evaluate_script()` with chessTestAPI functions
+4. **Interact**: Click board squares or buttons using their UIDs from snapshot  
+5. **Verify**: Check status display, move history panel, and timer
+
+#### Known Limitations & Workarounds
+- Bot moves use setTimeout (500ms delay) - tests should wait before verifying bot response
+- Dropdown interactions may have timing issues; consider JavaScript-based selection via `evaluate_script`
+- Pawn promotion dialog requires manual interaction in human vs human mode
+
+---
+
 ### Chess SPA Specifics
 - **Auto-save vs Manual save**: Separate logic - `autoSave()` for silent localStorage persistence, `saveGame()` for user-triggered file export
 - **Async functions**: Use `async`/`await` for file system operations (File System Access API)
