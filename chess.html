@@ -747,10 +747,6 @@ class BotAI {
     }
 
     getAllLegalMovesForColor(game, color) {
-        // Temporarily set currentTurn to the player's color
-        const originalTurn = game.gameState.currentTurn;
-        game.gameState.currentTurn = color;
-        
         const moves = [];
         for (let row = 0; row < 8; row++) {
             for (let col = 0; col < 8; col++) {
@@ -758,14 +754,11 @@ class BotAI {
                 if (piece && piece.color === color) {
                     const legalMoves = game.gameState.getLegalMoves(game.board, row, col);
                     for (const move of legalMoves) {
-                        moves.push({ from: { row, col }, to: move, isEnPassant: move.isEnPassant });
+                        moves.push({ from: { row, col }, to: move, isEnPassant: !!move.isEnPassant });
                     }
                 }
             }
         }
-        // Restore original turn
-        game.gameState.currentTurn = originalTurn;
-        
         return moves;
     }
 
@@ -910,18 +903,27 @@ class BotAI {
     }
 
     getRandomMove(game, allMoves) {
+        // Get opponent color for king safety checks
+        const botColor = game.gameState.currentTurn === 'white' ? 'black' : 'white';
+        const opponentColor = botColor === 'white' ? 'black' : 'white';
+
         const safeMoves = [];
 
         for (const move of allMoves) {
             const savedState = this.makeMoveOnBoard(game, move.from, move.to);
-            const opponentColor = game.gameState.currentTurn === 'white' ? 'black' : 'white';
-            const oppLegalMoves = this.getAllLegalMovesForColor(game, opponentColor);
-            const opponentCanCapture = oppLegalMoves.some(oppMove =>
-                oppMove.to.row === move.to.row && oppMove.to.col === move.to.col);
+            
+            // Check if our king is in check after the move
+            const piece = game.board.grid[move.from.row][move.from.col];
+            let kingInCheck = false;
+            if (piece && !piece.isCastling) {
+                const kingPos = botColor === 'white' ? game.gameState.whiteKingPos : game.gameState.blackKingPos;
+                kingInCheck = game.gameState.isSquareUnderAttack(game.board, kingPos.row, kingPos.col, opponentColor);
+            }
 
             this.undoMoveOnBoard(game, savedState);
 
-            if (!opponentCanCapture) { safeMoves.push(move); }
+            // Only consider moves that don't leave our king in check
+            if (!kingInCheck) { safeMoves.push(move); }
         }
 
         const candidates = safeMoves.length > 0 ? safeMoves : allMoves;
@@ -968,18 +970,43 @@ class BotAI {
     getMediumMove(game, botColor, allMoves) {
         let bestScore = -Infinity;
         let bestScoreMoves = [];
+        
+        const opponentColor = botColor === 'white' ? 'black' : 'white';
 
         for (const move of allMoves) {
             const savedState = this.makeMoveOnBoard(game, move.from, move.to);
 
-            let score = this.evaluateBoard(game, 'black');
-
-            if (this.isRepetition(game, move)) { score -= 200; }
-
+            // Check if the move leaves our king in check
+            let kingInCheck = false;
             const piece = game.board.grid[move.from.row][move.from.col];
-            if (piece) {
-                if ((piece.type === 'n' && move.to.row === 0 && move.to.col === 1) ||
-                    (piece.type === 'r' && move.to.row === 0 && move.to.col === 0)) {
+            if (piece && !piece.isCastling) {
+                const kingPos = botColor === 'white' ? game.gameState.whiteKingPos : game.gameState.blackKingPos;
+                kingInCheck = game.gameState.isSquareUnderAttack(game.board, kingPos.row, kingPos.col, opponentColor);
+            }
+
+            // If this move puts our king in check, heavily penalize it
+            let score = -Infinity;
+            if (!kingInCheck) {
+                score = this.evaluateBoard(game, botColor);
+
+                // Add repetition penalty
+                if (this.isRepetition(game.gameState, move)) { 
+                    score -= 200; 
+                }
+
+                // Penalize moving king early in the game
+                const isEarlyGame = game.moveHistory.length < 15;
+                if (piece.type === 'k' && isEarlyGame) {
+                    // Check if we're still on our starting rank - moving off is a sign of early king movement
+                    const startRow = botColor === 'white' ? 7 : 0;
+                    if (move.from.row !== startRow || move.to.row !== startRow) {
+                        score -= 300; // Severe penalty for early king movement
+                    }
+                }
+
+                // Penalize moving rook to corner squares
+                if (piece.type === 'r' && 
+                   ((move.to.row === 0 && move.to.col === 0) || (move.to.row === 7 && move.to.col === 7))) {
                     score -= 50;
                 }
             }
@@ -996,10 +1023,39 @@ class BotAI {
     }
 
     getHardMove(game, botColor, allMoves) {
-        const scoredMoves = allMoves.map(move => ({
+        // Filter out moves that leave our king in check
+        const safeMoves = [];
+        
+        for (const move of allMoves) {
+            const savedState = this.makeMoveOnBoard(game, move.from, move.to);
+            
+            const piece = game.board.grid[move.from.row][move.from.col];
+            let kingInCheck = false;
+            if (piece && !piece.isCastling) {
+                const opponentColor = botColor === 'white' ? 'black' : 'white';
+                const kingPos = botColor === 'white' ? game.gameState.whiteKingPos : game.gameState.blackKingPos;
+                kingInCheck = game.gameState.isSquareUnderAttack(game.board, kingPos.row, kingPos.col, opponentColor);
+            }
+            
+            this.undoMoveOnBoard(game, savedState);
+            
+            if (!kingInCheck) { safeMoves.push(move); }
+        }
+
+        // Use all moves as fallback
+        const candidates = safeMoves.length > 0 ? safeMoves : allMoves;
+
+        if (candidates.length === 0) {
+            return null;
+        }
+
+        const scoredMoves = candidates.map(move => ({
             move,
-            score: this.pieceValues[game.board.grid[move.to.row][move.to.col]?.type || 0] * 10 + (move.isEnPassant ? 50 : 0)
+            score: this.pieceValues[game.board.grid[move.to.row][move.to.col]?.type || 0] * 10 + 
+                   (move.isEnPassant ? 50 : 0)
         }));
+        
+        // Sort descending by capture value
         scoredMoves.sort((a, b) => b.score - a.score);
 
         let bestMove = null;
@@ -1008,15 +1064,39 @@ class BotAI {
         for (const item of scoredMoves) {
             const savedState = this.makeMoveOnBoard(game, item.move.from, item.move.to);
 
-            const opponentColor = 'white';
-            const oppScore = this.minimax(game, opponentColor, 1);
+            // Minimax depth-2 search
+            const opponentColor = botColor === 'white' ? 'black' : 'white';
+            let oppScore = this.minimax(game, opponentColor, 1);
+            
+            // Check if minimax result shows our king in check and penalize it
+            const piece = game.board.grid[item.move.from.row][item.move.from.col];
+            if (piece) {
+                const kingPos = botColor === 'white' ? game.gameState.whiteKingPos : game.gameState.blackKingPos;
+                
+                // Check after undo to verify the minimax result was valid
+                this.undoMoveOnBoard(game, savedState);
+                
+                let checkPenalty = 0;
+                if (game.gameState.isSquareUnderAttack(game.board, kingPos.row, kingPos.col, opponentColor)) {
+                    checkPenalty = -500; // Severe penalty for moves leading to king in check
+                }
+                
+                this.makeMoveOnBoard(game, item.move.from, item.move.to);
+                oppScore += checkPenalty;
+            }
 
             this.undoMoveOnBoard(game, savedState);
 
             let repetitionPenalty = 0;
-            if (this.isRepetition(game, item.move)) { repetitionPenalty = -300; }
+            if (this.isRepetition(game.gameState, item.move)) { repetitionPenalty = -300; }
 
             const score = -oppScore + repetitionPenalty;
+
+            // Heavily penalize early king movement
+            const isEarlyGame = game.moveHistory.length < 15;
+            if (piece.type === 'k' && isEarlyGame) {
+                score -= 200;
+            }
 
             if (score > bestScore) {
                 bestScore = score;
@@ -1024,7 +1104,7 @@ class BotAI {
             }
         }
 
-        return bestMove || allMoves[0];
+        return bestMove || candidates[0];
     }
 
     minimax(game, color, depth, alpha = -Infinity, beta = Infinity) {
