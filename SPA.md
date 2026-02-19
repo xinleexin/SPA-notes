@@ -1,7 +1,7 @@
 # Workspace Skill: SPA Notes Application
 
 ## Overview
-This is a Single Page Application (SPA) for managing markdown notes with version history, built as pure client-side HTML/JS with no build process. The main application is `notes.html`. There's also a chess SPA (`chess.html`) with bot difficulty levels.
+This is a Single Page Application (SPA) for managing markdown notes with version history, built as pure client-side HTML/JS with no build process. The main application is `notes.html`. There's also a chess SPA (`chess.html`) with bot AI support and comprehensive unit testing capabilities.
 
 ---
 
@@ -17,7 +17,7 @@ This is a Single Page Application (SPA) for managing markdown notes with version
 | Task | Command |
 |------|---------|
 | Run the app | Open `notes.html` directly in a browser |
-| Run tests | Open `test.html` in a browser and click "Run All Tests" |
+| Run tests | Open `test.html` or `chess-tests.html` in browser and click "Run All Tests" |
 | Test import/export | Open `import-export-test.html` if available |
 | Play Chess | Open `chess.html` in a browser |
 
@@ -191,6 +191,7 @@ When testing with chrome-devtools-mcp:
 
 #### Test Files
 - `chess.html` - Main chess application with bot AI support  
+- `chess-tests.html` - Unit testing framework for chess classes
 - `chess-test.md` - Comprehensive test cases using Chrome DevTools MCP
 
 #### Test Scenarios Covered
@@ -249,15 +250,185 @@ When testing with chrome-devtools-mcp:
 
 ---
 
-## File Structure
+## Chess TDD Framework Design and Lessons Learned
+
+### Key Issues Discovered in Chess Bot AI
+
+#### Issue 1: Undefined Global `board` Variable
+**Symptom**: Runtime errors when GameState methods tried to access the board.
+
+```javascript
+// Problematic code:
+GameState.findKing(color) {
+    for (let row = 0; row < 8; row++) {
+        const piece = board.grid[row][col]; // 'board' is undefined!
+    }
+}
+```
+
+**Fix**: Pass board as parameter and store in GameState constructor.
+```javascript
+class GameState {
+    constructor(board) { this.board = board; }  // Explicit dependency injection
+    
+    findKing(color) {
+        for (let row = 0; row < 8; row++) {
+            const piece = this.board.grid[row][col]; // Now works!
+        }
+    }
+}
+```
+
+#### Issue 2: Missing Board Parameter in BotAI
+**Symptom**: `BotAI.getAllLegalMovesForColor()` returned empty array because GameState.getLegalMoves() required board parameter.
+
+```javascript
+// Problematic code:
+getAllLegalMovesForColor(game, color) {
+    // ...
+    const legalMoves = game.gameState.getLegalMoves(row, col); // Missing board!
+}
+```
+
+**Fix**: Pass the board explicitly.
+```javascript
+const legalMoves = game.gameState.getLegalMoves(game.board, row, col);
+```
+
+#### Issue 3: Turn State Mismatch
+**Symptom**: When calculating moves for black (opponent), GameState.currentTurn was still 'white'.
+
+**Fix**: Temporarily set turn to the player's color during move calculation.
+```javascript
+getAllLegalMovesForColor(game, color) {
+    const originalTurn = game.gameState.currentTurn;
+    game.gameState.currentTurn = color; // Set to player's color
+    
+    const moves = [];
+    for (let row = 0; row < 8; row++) {
+        for (let col = 0; col < 8; col++) {
+            // ... collect moves ...
+        }
+    }
+    
+    game.gameState.currentTurn = originalTurn; // Restore
+    return moves;
+}
+```
+
+#### Issue 4: King.getPseudoLegalMoves Signature Mismatch
+**Symptom**: "board.isValidPosition is not a function" error when checking castling validity.
+
+```javascript
+// Problematic code:
+gameState.isSquareUnderAttack(row, col, attackerColor) // Missing board parameter!
+```
+
+**Fix**: Pass board as first parameter.
+```javascript
+gameState.isSquareUnderAttack(board, row, col, attackerColor)
+```
+
+---
+
+### TDD Framework (chess-tests.html)
+
+#### Structure Overview
+```
+chess-tests.html
+├── TestRunner Class       - Test execution management with categories
+├── Assertions Class       - Unit assertion helpers (equal, notEqual, assertTrue, hasLength)
+├── Game Classes           - All chess classes isolated from DOM for pure testing
+└── 30+ Test Cases         - Across: Piece Movement, ChessBoard, GameState, BotAI
+```
+
+#### Test Categories
+
+| Category | Tests | Purpose |
+|----------|-------|---------|
+| **Piece Movement** | 6 | Pawn forward/double move, Knight L-shape (8 moves), Bishop blocked by own piece, Queen combined rook+bishop movement, King single step |
+| **ChessBoard** | 4 | Board initialization verification, get/set piece operations, copyGrid independence test, invalid position handling |
+| **GameState** | 9 | Find king positions for both colors, isSquareUnderAttack detection (pawn attacks), getPseudoLegalMoves count validation, getLegalMoves filtering check exposures, isCheck detection, hasLegalMoves, isStalemate |
+| **BotAI** | 7 | Board evaluation scoring for equal pieces and queen vs pawn advantage, getRandomMove returns valid move, getMediumMove evaluates position correctly, minimax depth-1 search returns numeric score |
+
+#### TestRunner Features
+- Category-based test execution (Pieces/Board/GameState/BotAI buttons)
+- Pass/Fail badges with color coding (green/red)
+- Output modal on failure showing detailed error information
+- Summary display of total counts
+
+#### Assertions Class Methods
+```javascript
+Assertions.equal(actual, expected, message)      // Strict equality check
+Assertions.notEqual(actual, expected, message)   // Inequality check  
+Assertions.assertTrue(value, message)            // Boolean truth check
+Assertions.assertFalse(value, message)           // Boolean falsity check
+Assertions.isArray(arr, message)                 // Array type verification
+Assertions.hasLength(arr, expectedLength, msg)  // Length validation for arrays
+```
+
+---
+
+### Lessons Learned
+
+#### 1. Testability Requires Planning from Start
+- Classes should accept dependencies as parameters rather than relying on globals
+- Methods should have explicit parameters for better isolation and mocking
+- Consider testability during initial design phase, not after implementation
+
+**Anti-pattern to avoid:**
+```javascript
+// Relies on global state - hard to test in isolation
+class GameState {
+    constructor() { this.board = window.board || new ChessBoard(); }
+}
+```
+
+#### 2. Signature Consistency is Critical
+When refactoring methods:
+- Update ALL callers when method signature changes
+- BotAI.getAllLegalMovesForColor must match GameState.getLegalMoves parameters
+- King.getPseudoLegalMoves must pass board to gameState.isSquareUnderAttack
+
+**Recommendation**: Use TypeScript interfaces or JSDoc type hints to catch signature mismatches early.
+
+#### 3. Turn State Management in Multi-Turn Logic
+When calculating opponent moves for AI:
+- Temporarily set GameState.currentTurn to the player being evaluated
+- Store and restore original turn state after calculation
+- This enables accurate legal move generation without side effects
+
+#### 4. Bot AI Debugging Workflow with MCP Tools
+1. **Check console messages first** - Look for runtime errors that break execution
+2. **Test individual methods in isolation** using `evaluate_script()`:
+   ```javascript
+   window.chessGame.botAI.getAllLegalMovesForColor(window.chessGame, 'black')
+   ```
+3. **Verify state before/after move operations**
+4. Use chessTestAPI to inspect game state without modifying the code
+
+#### 5. Board Parameter Propagation Chain
+The board parameter must flow through:
+```
+BotAI.makeMove()
+    → BotAI.getAllLegalMovesForColor(game, color)
+        → GameState.getLegalMoves(board, row, col)
+            → Piece.getPseudoLegalMoves(board, gameState, row, col)
+                → GameState.isSquareUnderAttack(board, row, col, attackerColor)
+                    → Board.isValidPosition(), board.getPiece()
+```
+
+---
+
+### File Structure (Updated)
 
 | File | Purpose |
 |------|---------|
 | `SPA.md` | This workspace skill documentation |
 | `notes.html` | Main notes SPA application |
-| `chess.html` | Chess SPA with bot AI |
+| `chess.html` | Chess SPA with bot AI and testability fixes |
+| `chess-tests.html` | Unit testing framework for chess classes (30+ tests) |
 | `note.html` | Individual note template/variant |
-| `notes.html` | Notes management SPA |
 
 ---
 

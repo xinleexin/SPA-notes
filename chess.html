@@ -376,13 +376,13 @@ class King extends Piece {
 
         const colorKey = this.color === 'white' ? 'whiteKingMoved' : 'blackKingMoved';
         if (!gameState.castlingRights[colorKey] &&
-            !gameState.isSquareUnderAttack(row, col, this.color === 'white' ? 'black' : 'white')) {
+            !gameState.isSquareUnderAttack(board, row, col, this.color === 'white' ? 'black' : 'white')) {
             const kingsideRookMoved = this.color === 'white'
                 ? gameState.castlingRights.whiteRookKingSideMoved
                 : gameState.castlingRights.blackRookKingSideMoved;
             if (!kingsideRookMoved && board.isEmpty(row, 5) && board.isEmpty(row, 6)) {
-                if (!gameState.isSquareUnderAttack(row, 5, this.color === 'white' ? 'black' : 'white') &&
-                    !gameState.isSquareUnderAttack(row, 6, this.color === 'white' ? 'black' : 'white')) {
+                if (!gameState.isSquareUnderAttack(board, row, 5, this.color === 'white' ? 'black' : 'white') &&
+                    !gameState.isSquareUnderAttack(board, row, 6, this.color === 'white' ? 'black' : 'white')) {
                     moves.push({ row: row, col: 6, isCastling: 'kingside' });
                 }
             }
@@ -391,8 +391,8 @@ class King extends Piece {
                 ? gameState.castlingRights.whiteRookQueenSideMoved
                 : gameState.castlingRights.blackRookQueenSideMoved;
             if (!queensideRookMoved && board.isEmpty(row, 1) && board.isEmpty(row, 2) && board.isEmpty(row, 3)) {
-                if (!gameState.isSquareUnderAttack(row, 3, this.color === 'white' ? 'black' : 'white') &&
-                    !gameState.isSquareUnderAttack(row, 2, this.color === 'white' ? 'black' : 'white')) {
+                if (!gameState.isSquareUnderAttack(board, row, 3, this.color === 'white' ? 'black' : 'white') &&
+                    !gameState.isSquareUnderAttack(board, row, 2, this.color === 'white' ? 'black' : 'white')) {
                     moves.push({ row: row, col: 2, isCastling: 'queenside' });
                 }
             }
@@ -436,7 +436,8 @@ class ChessBoard {
 }
 
 class GameState {
-    constructor() {
+    constructor(board) {
+        this.board = board;
         this.currentTurn = 'white';
         this.enPassantTarget = null;
         this.castlingRights = {
@@ -452,13 +453,13 @@ class GameState {
     findKing(color) {
         for (let row = 0; row < 8; row++) {
             for (let col = 0; col < 8; col++) {
-                const piece = board.grid[row][col];
+                const piece = this.board.grid[row][col];
                 if (piece && piece.type === 'k' && piece.color === color) { return { row, col }; }
             }
         }
         return null;
     }
-    isSquareUnderAttack(row, col, attackerColor) {
+    isSquareUnderAttack(board, row, col, attackerColor) {
         const pawnDirection = attackerColor === 'white' ? -1 : 1;
         if (board.isValidPosition(row + pawnDirection, col - 1)) {
             const piece = board.getPiece(row + pawnDirection, col - 1);
@@ -520,11 +521,11 @@ class GameState {
         return false;
     }
     getPseudoLegalMoves(row, col) {
-        const piece = board.getPiece(row, col);
+        const piece = this.board.getPiece(row, col);
         if (!piece || piece.color !== this.currentTurn) return [];
-        return piece.getPseudoLegalMoves(board, this, row, col);
+        return piece.getPseudoLegalMoves(this.board, this, row, col);
     }
-    getLegalMoves(row, col) {
+    getLegalMoves(board, row, col) {
         const piece = board.getPiece(row, col);
         if (!piece || piece.color !== this.currentTurn) return [];
         const pseudoMoves = this.getPseudoLegalMoves(row, col);
@@ -536,7 +537,7 @@ class GameState {
             const savedSource = board.grid[row][col];
 
             board.setPiece(move.row, move.col, savedSource);
-            board.setPiece(row, col, null);
+            this.board.setPiece(row, col, null);
 
             let originalKingPos = null;
             if (piece.type === 'k') {
@@ -544,13 +545,14 @@ class GameState {
             }
 
             const kingInCheck = this.isSquareUnderAttack(
-                piece.type === 'k' ? { row: move.row, col: move.col } :
-                    (piece.color === 'white' ? this.whiteKingPos : this.blackKingPos),
+                this.board,
+                piece.type === 'k' ? move.row : (piece.color === 'white' ? this.whiteKingPos.row : this.blackKingPos.row),
+                piece.type === 'k' ? move.col : (piece.color === 'white' ? this.whiteKingPos.col : this.blackKingPos.col),
                 opponentColor
             );
 
-            board.setPiece(row, col, savedSource);
-            board.setPiece(move.row, move.col, savedTarget);
+            this.board.setPiece(row, col, savedSource);
+            this.board.setPiece(move.row, move.col, savedTarget);
 
             if (originalKingPos) {
                 piece.color === 'white' ? this.whiteKingPos = originalKingPos : this.blackKingPos = originalKingPos;
@@ -559,10 +561,10 @@ class GameState {
             let validCastling = true;
             if (move.isCastling === 'kingside') {
                 const backRow = piece.color === 'white' ? 7 : 0;
-                validCastling = !this.isSquareUnderAttack(backRow, 5, opponentColor);
+                validCastling = !this.isSquareUnderAttack(this.board, backRow, 5, opponentColor);
             } else if (move.isCastling === 'queenside') {
                 const backRow = piece.color === 'white' ? 7 : 0;
-                validCastling = !this.isSquareUnderAttack(backRow, 3, opponentColor);
+                validCastling = !this.isSquareUnderAttack(this.board, backRow, 3, opponentColor);
             }
 
             if (!kingInCheck && validCastling) { legalMoves.push(move); }
@@ -573,19 +575,30 @@ class GameState {
         const kingPos = this.findKing(color);
         if (!kingPos) return false;
         const opponentColor = color === 'white' ? 'black' : 'white';
-        return this.isSquareUnderAttack(kingPos.row, kingPos.col, opponentColor);
+        return this.isSquareUnderAttack(this.board, kingPos.row, kingPos.col, opponentColor);
     }
-    hasLegalMoves(color) {
+    
+    hasLegalMoves(board, color) {
         for (let row = 0; row < 8; row++) {
             for (let col = 0; col < 8; col++) {
                 const piece = board.getPiece(row, col);
-                if (piece && piece.color === color) { if (this.getLegalMoves(row, col).length > 0) return true; }
+                if (piece && piece.color === color) { 
+                    if (this.getLegalMoves(board, row, col).length > 0) return true;
+                }
             }
         }
         return false;
     }
-    isCheckmate() { return this.isCheck(this.currentTurn) && !this.hasLegalMoves(this.currentTurn); }
-    isStalemate() { return !this.isCheck(this.currentTurn) && !this.hasLegalMoves(this.currentTurn); }
+    
+    isCheckmate() { 
+        const currentColor = this.currentTurn;
+        return this.isCheck(currentColor) && !this.hasLegalMoves(this.board, currentColor);
+    }
+    
+    isStalemate() { 
+        const currentColor = this.currentTurn;
+        return !this.isCheck(currentColor) && !this.hasLegalMoves(this.board, currentColor);
+    }
 }
 
 class MCPDialog {
@@ -734,18 +747,25 @@ class BotAI {
     }
 
     getAllLegalMovesForColor(game, color) {
+        // Temporarily set currentTurn to the player's color
+        const originalTurn = game.gameState.currentTurn;
+        game.gameState.currentTurn = color;
+        
         const moves = [];
         for (let row = 0; row < 8; row++) {
             for (let col = 0; col < 8; col++) {
                 const piece = game.board.grid[row][col];
                 if (piece && piece.color === color) {
-                    const legalMoves = game.gameState.getLegalMoves(row, col);
+                    const legalMoves = game.gameState.getLegalMoves(game.board, row, col);
                     for (const move of legalMoves) {
                         moves.push({ from: { row, col }, to: move, isEnPassant: move.isEnPassant });
                     }
                 }
             }
         }
+        // Restore original turn
+        game.gameState.currentTurn = originalTurn;
+        
         return moves;
     }
 
@@ -1103,9 +1123,9 @@ class BotAI {
 }
 
 class ChessGame {
-    constructor() {
-        this.board = window.board || new ChessBoard();
-        this.gameState = new GameState();
+    constructor(board) {
+        this.board = board || (window.board || new ChessBoard());
+        this.gameState = new GameState(this.board);
         this.dialog = new MCPDialog();
         this.botAI = null;
         this.selectedSquare = null;
@@ -1131,7 +1151,7 @@ class ChessGame {
         console.log('[ChessGame.createNewGame] Starting...');
         try {
             this.board.initializeBoard();
-            this.gameState = new GameState();
+            this.gameState = new GameState(this.board);
             this.selectedSquare = null;
             this.legalMoves = [];
             this.moveHistory = [];
@@ -1283,7 +1303,7 @@ class ChessGame {
         return null;
     }
 
-    getLegalMoves(row, col) { return this.gameState.getLegalMoves(row, col); }
+    getLegalMoves(board, row, col) { return this.gameState.getLegalMoves(board, row, col); }
 }
 
 // ============================================
@@ -1332,7 +1352,7 @@ function selectSquare(row, col) {
     if (piece && piece.color === currentTurn) {
         console.log('[SELECT_SQUARE] Selected own piece');
         chessGame.selectedSquare = { row, col };
-        chessGame.legalMoves = chessGame.getLegalMoves(row, col);
+        chessGame.legalMoves = chessGame.getLegalMoves(chessGame.board, row, col);
         renderBoard();
         return;
     }
