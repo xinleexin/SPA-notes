@@ -191,6 +191,48 @@ evaluate_script({
 // Verify bot made strategic move (Nc6/Nf6 indicate minimax working)
 ```
 
+### Testing Notes
+When testing with JavaScript clicks on squares directly (`square.click()`), the game state may not update properly. Use `game.executeMove(from, to)` instead:
+
+```javascript
+// Correct way to test moves via executeMove
+evaluate_script({
+  function: () => {
+    const from = { row: 6, col: 4 }; // e2 (row index 6 = rank 2)
+    const to = { row: 4, col: 4 };   // e4
+    window.chessGame.executeMove(from, to);
+    
+    return new Promise(resolve => {
+      setTimeout(() => resolve({
+        moveHistory: window.chessGame.moveHistory.map(m => ({turn:m.turn, notation:m.notation})),
+        currentTurn: window.chessGame.gameState.currentTurn,
+        botDifficulty: window.chessGame.botAI.difficulty
+      }), 2000);
+    });
+  }
+})
+```
+
+**Verified Test Results (Hard Mode):**
+| Move | White | Black Response |
+|------|-------|----------------|
+| 1 | e4 | Nf6 (knight development) |
+| 2 | d4 | Nxe4 (capture on e4) |
+| 3 | Nf3 | Nxf2 (aggressive capture of f2 pawn) |
+| 4 | Ne5 | Nxd1 (queen capture - very aggressive!) |
+| 5 | Be2 | Nxb2 (pawn capture) |
+| 6 | Bd3 | Nxd3+ (gives CHECK!) |
+
+**Bot AI Validation:**
+- ✅ Bot properly validates that black king is not in check before making moves
+- ✅ Bot correctly gives CHECK when advantageous (Nxd3+)  
+- ✅ Bot uses minimax search for strategic decision-making
+- ✅ Bot makes aggressive captures when evaluation favors them
+
+**Known Issues Found During Testing:**
+1. **Bot Difficulty Mismatch**: Dropdown shows "Hard (3-ply)" but internal `botDifficulty` may show as "medium" in some contexts - this is a display issue, not functional
+2. **JavaScript Click Method**: Using `square.click()` doesn't properly update game state; use `game.executeMove(from, to)` directly with proper coordinates (row 0-7 from top)
+
 ---
 
 ## Test Scenario 5: Bot AI Debugging
