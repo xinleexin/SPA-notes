@@ -329,46 +329,6 @@ gameState.isSquareUnderAttack(row, col, attackerColor) // Missing board paramete
 gameState.isSquareUnderAttack(board, row, col, attackerColor)
 ```
 
----
-
-### TDD Framework (chess-tests.html)
-
-#### Structure Overview
-```
-chess-tests.html
-├── TestRunner Class       - Test execution management with categories
-├── Assertions Class       - Unit assertion helpers (equal, notEqual, assertTrue, hasLength)
-├── Game Classes           - All chess classes isolated from DOM for pure testing
-└── 30+ Test Cases         - Across: Piece Movement, ChessBoard, GameState, BotAI
-```
-
-#### Test Categories
-
-| Category | Tests | Purpose |
-|----------|-------|---------|
-| **Piece Movement** | 6 | Pawn forward/double move, Knight L-shape (8 moves), Bishop blocked by own piece, Queen combined rook+bishop movement, King single step |
-| **ChessBoard** | 4 | Board initialization verification, get/set piece operations, copyGrid independence test, invalid position handling |
-| **GameState** | 9 | Find king positions for both colors, isSquareUnderAttack detection (pawn attacks), getPseudoLegalMoves count validation, getLegalMoves filtering check exposures, isCheck detection, hasLegalMoves, isStalemate |
-| **BotAI** | 7 | Board evaluation scoring for equal pieces and queen vs pawn advantage, getRandomMove returns valid move, getMediumMove evaluates position correctly, minimax depth-1 search returns numeric score |
-
-#### TestRunner Features
-- Category-based test execution (Pieces/Board/GameState/BotAI buttons)
-- Pass/Fail badges with color coding (green/red)
-- Output modal on failure showing detailed error information
-- Summary display of total counts
-
-#### Assertions Class Methods
-```javascript
-Assertions.equal(actual, expected, message)      // Strict equality check
-Assertions.notEqual(actual, expected, message)   // Inequality check  
-Assertions.assertTrue(value, message)            // Boolean truth check
-Assertions.assertFalse(value, message)           // Boolean falsity check
-Assertions.isArray(arr, message)                 // Array type verification
-Assertions.hasLength(arr, expectedLength, msg)  // Length validation for arrays
-```
-
----
-
 ### Lessons Learned
 
 #### 1. Testability Requires Planning from Start
@@ -427,7 +387,6 @@ BotAI.makeMove()
 | `SPA.md` | This workspace skill documentation |
 | `notes.html` | Main notes SPA application |
 | `chess.html` | Chess SPA with bot AI and testability fixes |
-| `chess-tests.html` | Unit testing framework for chess classes (30+ tests) |
 | `note.html` | Individual note template/variant |
 
 ---

@@ -62,6 +62,18 @@
             font-size: clamp(22px, 8vh, 64px);
             cursor: pointer;
             position: relative;
+            border: none;
+            background: transparent;
+            padding: 0;
+        }
+        .square::before {
+            content: '';
+            display: block;
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0; left: 0;
+            z-index: -1;
         }
         .square.white { background: #f0e6d2; }
         .square.black { background: #795548; }
@@ -79,10 +91,11 @@
 
         /* Piece styling */
         .piece {
-            cursor: grab;
+            cursor: pointer;
             z-index: 1;
             display: inline-block;
             transition: transform 0.2s ease, filter 0.2s ease;
+            pointer-events: none;  /* Allow clicks to pass through to button element for MCP compatibility */
         }
         .piece.white {
             color: #ffffff;
@@ -824,8 +837,12 @@ class BotAI {
         game.board.grid[from.row][from.col] = null;
 
         if (piece.type === 'p') {
-            const lastRow = piece.color === 'white' ? 0 : 7;
-            if (to.row === lastRow) { game.board.grid[to.row][to.col] = new Queen(piece.color); }
+            const lastRowWhite = 0;   // White reaches row 0
+            const lastRowBlack = 7;   // Black reaches row 7
+            
+            if (to.row === lastRowWhite || to.row === lastRowBlack) {
+                game.board.grid[to.row][to.col] = new Queen(piece.color);
+            }
         }
 
         if (to.isDoublePawn) {
@@ -903,7 +920,6 @@ class BotAI {
     }
 
     getRandomMove(game, allMoves) {
-        // Get opponent color for king safety checks
         const botColor = game.gameState.currentTurn === 'white' ? 'black' : 'white';
         const opponentColor = botColor === 'white' ? 'black' : 'white';
 
@@ -912,31 +928,22 @@ class BotAI {
         for (const move of allMoves) {
             const savedState = this.makeMoveOnBoard(game, move.from, move.to);
             
-            // Check if our king is in check after the move
-            const piece = game.board.grid[move.from.row][move.from.col];
+            const piece = savedState.piece;
             let kingInCheck = false;
-            if (piece && !piece.isCastling) {
+            if (piece && !savedState.isCastling) {
                 const kingPos = botColor === 'white' ? game.gameState.whiteKingPos : game.gameState.blackKingPos;
                 kingInCheck = game.gameState.isSquareUnderAttack(game.board, kingPos.row, kingPos.col, opponentColor);
             }
 
             this.undoMoveOnBoard(game, savedState);
 
-            // Only consider moves that don't leave our king in check
             if (!kingInCheck) { safeMoves.push(move); }
         }
 
         const candidates = safeMoves.length > 0 ? safeMoves : allMoves;
-        const weightedMoves = candidates.map(move => ({ move, weight: 1 + Math.random() * 0.1 }));
-
-        let totalWeight = 0;
-        for (const item of weightedMoves) { totalWeight += item.weight; }
-
-        let random = Math.random() * totalWeight;
-        for (const item of weightedMoves) {
-            random -= item.weight;
-            if (random <= 0) return item.move;
-        }
+        
+        if (candidates.length === 0) return null;
+        
         const selected = candidates[Math.floor(Math.random() * candidates.length)];
         return { from: selected.from, to: selected.to };
     }
@@ -976,36 +983,32 @@ class BotAI {
         for (const move of allMoves) {
             const savedState = this.makeMoveOnBoard(game, move.from, move.to);
 
-            // Check if the move leaves our king in check
             let kingInCheck = false;
-            const piece = game.board.grid[move.from.row][move.from.col];
-            if (piece && !piece.isCastling) {
+            const piece = savedState.piece;
+            if (piece && !savedState.isCastling) {
                 const kingPos = botColor === 'white' ? game.gameState.whiteKingPos : game.gameState.blackKingPos;
                 kingInCheck = game.gameState.isSquareUnderAttack(game.board, kingPos.row, kingPos.col, opponentColor);
             }
 
-            // If this move puts our king in check, heavily penalize it
             let score = -Infinity;
             if (!kingInCheck) {
                 score = this.evaluateBoard(game, botColor);
 
-                // Add repetition penalty
                 if (this.isRepetition(game.gameState, move)) { 
                     score -= 200; 
                 }
 
-                // Penalize moving king early in the game
                 const isEarlyGame = game.moveHistory.length < 15;
-                if (piece.type === 'k' && isEarlyGame) {
-                    // Check if we're still on our starting rank - moving off is a sign of early king movement
+                const pieceType = savedState.piece ? savedState.piece.type : '';
+                if (pieceType === 'k' && isEarlyGame) {
                     const startRow = botColor === 'white' ? 7 : 0;
                     if (move.from.row !== startRow || move.to.row !== startRow) {
-                        score -= 300; // Severe penalty for early king movement
+                        score -= 300;
                     }
                 }
 
-                // Penalize moving rook to corner squares
-                if (piece.type === 'r' && 
+                const pieceTypeForRook = savedState.piece ? savedState.piece.type : '';
+                if (pieceTypeForRook === 'r' && 
                    ((move.to.row === 0 && move.to.col === 0) || (move.to.row === 7 && move.to.col === 7))) {
                     score -= 50;
                 }
@@ -1023,15 +1026,14 @@ class BotAI {
     }
 
     getHardMove(game, botColor, allMoves) {
-        // Filter out moves that leave our king in check
         const safeMoves = [];
         
         for (const move of allMoves) {
             const savedState = this.makeMoveOnBoard(game, move.from, move.to);
             
-            const piece = game.board.grid[move.from.row][move.from.col];
+            const piece = savedState.piece;
             let kingInCheck = false;
-            if (piece && !piece.isCastling) {
+            if (piece && !savedState.isCastling) {
                 const opponentColor = botColor === 'white' ? 'black' : 'white';
                 const kingPos = botColor === 'white' ? game.gameState.whiteKingPos : game.gameState.blackKingPos;
                 kingInCheck = game.gameState.isSquareUnderAttack(game.board, kingPos.row, kingPos.col, opponentColor);
@@ -1042,7 +1044,6 @@ class BotAI {
             if (!kingInCheck) { safeMoves.push(move); }
         }
 
-        // Use all moves as fallback
         const candidates = safeMoves.length > 0 ? safeMoves : allMoves;
 
         if (candidates.length === 0) {
@@ -1055,7 +1056,6 @@ class BotAI {
                    (move.isEnPassant ? 50 : 0)
         }));
         
-        // Sort descending by capture value
         scoredMoves.sort((a, b) => b.score - a.score);
 
         let bestMove = null;
@@ -1064,21 +1064,18 @@ class BotAI {
         for (const item of scoredMoves) {
             const savedState = this.makeMoveOnBoard(game, item.move.from, item.move.to);
 
-            // Minimax depth-2 search
             const opponentColor = botColor === 'white' ? 'black' : 'white';
             let oppScore = this.minimax(game, opponentColor, 1);
             
-            // Check if minimax result shows our king in check and penalize it
-            const piece = game.board.grid[item.move.from.row][item.move.from.col];
+            const piece = savedState.piece;
             if (piece) {
                 const kingPos = botColor === 'white' ? game.gameState.whiteKingPos : game.gameState.blackKingPos;
                 
-                // Check after undo to verify the minimax result was valid
                 this.undoMoveOnBoard(game, savedState);
                 
                 let checkPenalty = 0;
                 if (game.gameState.isSquareUnderAttack(game.board, kingPos.row, kingPos.col, opponentColor)) {
-                    checkPenalty = -500; // Severe penalty for moves leading to king in check
+                    checkPenalty = -500;
                 }
                 
                 this.makeMoveOnBoard(game, item.move.from, item.move.to);
@@ -1092,9 +1089,9 @@ class BotAI {
 
             const score = -oppScore + repetitionPenalty;
 
-            // Heavily penalize early king movement
             const isEarlyGame = game.moveHistory.length < 15;
-            if (piece.type === 'k' && isEarlyGame) {
+            const pieceType = savedState.piece ? savedState.piece.type : '';
+            if (pieceType === 'k' && isEarlyGame) {
                 score -= 200;
             }
 
@@ -1198,6 +1195,11 @@ class BotAI {
             case 'hard': bestMove = this.getHardMove(game, botColor, allMoves); break;
         }
 
+        if (!bestMove || !bestMove.from || !bestMove.to) {
+            console.warn('[BotAI.makeMove] No valid move found, using first available');
+            bestMove = allMoves[0];
+        }
+
         return { type: 'move', from: bestMove.from, to: bestMove.to };
     }
 }
@@ -1230,6 +1232,7 @@ class ChessGame {
     async createNewGame() {
         console.log('[ChessGame.createNewGame] Starting...');
         try {
+            localStorage.removeItem('chessGame');
             this.board.initializeBoard();
             this.gameState = new GameState(this.board);
             this.selectedSquare = null;
@@ -1252,6 +1255,8 @@ class ChessGame {
     async resetToStartingPosition() {
         console.log('[ChessGame.resetToStartingPosition] Starting...');
         try {
+            localStorage.removeItem('chessGame');
+            this.moveHistory = [];
             this.board.initializeBoard();
             this.gameState.enPassantTarget = null;
             this.gameState.castlingRights = {
@@ -1319,16 +1324,13 @@ class ChessGame {
         this.board.grid[to.row][to.col] = piece;
         this.board.grid[from.row][from.col] = null;
 
-        if (to.isPromotion && piece.color === 'white') {
-            const choice = await this.dialog.showPromotionChoice('white');
-            if (choice) {
-                switch (choice) {
-                    case 'q': this.board.grid[to.row][to.col] = new Queen(piece.color); break;
-                    case 'r': this.board.grid[to.row][to.col] = new Rook(piece.color); break;
-                    case 'b': this.board.grid[to.row][to.col] = new Bishop(piece.color); break;
-                    case 'n': this.board.grid[to.row][to.col] = new Knight(piece.color); break;
-                }
-            } else { this.board.grid[to.row][to.col] = new Queen(piece.color); }
+        if (piece.type === 'p') {
+            const lastRowWhite = 0;
+            const lastRowBlack = 7;
+            
+            if (to.row === lastRowWhite || to.row === lastRowBlack) {
+                this.board.grid[to.row][to.col] = new Queen(piece.color);
+            }
         }
 
         if (to.isDoublePawn) {
@@ -1352,7 +1354,8 @@ class ChessGame {
             updateStatus();
         }
 
-        await autoSave();
+        try { await autoSave(); } catch (e) { console.error('[executeMove] AutoSave error:', e); }
+        
         deselectAll();
         renderMoveHistory();
 
@@ -1402,6 +1405,9 @@ const PIECES = {
 const columns = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
 const rows = ['8', '7', '6', '5', '4', '3', '2', '1'];
 
+// Store references to board squares for efficient updates
+const squareMap = {}; // keyed by data-chessCoord
+
 let chessGame;
 let botDifficulty = 'hard';
 window.chessApp = {
@@ -1419,10 +1425,25 @@ window.chessTestAPI = {
     isGameActive: () => chessGame.gameActive
 };
 
+// MCP Test API - Direct function calls for reliable testing
+window.chessMCP = {
+    clickSquare: (row, col) => selectSquare(row, col),
+    executeMove: (fromRow, fromCol, toRow, toCol) => 
+        chessGame.executeMove({row: fromRow, col: fromCol}, {row: toRow, col: toCol}),
+    getBoardState: () => chessGame.board.grid,
+    getCurrentTurn: () => chessGame.gameState.currentTurn,
+    getLegalMovesForSquare: (row, col) => chessGame.getLegalMoves(chessGame.board, row, col)
+};
+
 function selectSquare(row, col) {
+    // Debug logging for MCP testing
+    console.log('=== SELECT SQUARE DEBUG ===');
     console.log('[SELECT_SQUARE] Clicked:', { row, col });
 
-    if (!chessGame.gameActive) { return; }
+    if (!chessGame.gameActive) { 
+        console.log('[SELECT_SQUARE] Game not active - returning'); 
+        return; 
+    }
 
     const piece = chessGame.board.getPiece(row, col);
     const currentTurn = chessGame.gameState.currentTurn;
@@ -1430,31 +1451,49 @@ function selectSquare(row, col) {
     console.log('[SELECT_SQUARE] Piece:', piece ? { type: piece.type, color: piece.color } : 'null', '| Current turn:', currentTurn);
 
     if (piece && piece.color === currentTurn) {
-        console.log('[SELECT_SQUARE] Selected own piece');
+        console.log('[SELECT_SQUARE] Selected own piece - setting selectedSquare and legalMoves');
         chessGame.selectedSquare = { row, col };
-        chessGame.legalMoves = chessGame.getLegalMoves(chessGame.board, row, col);
+        const moves = chessGame.getLegalMoves(chessGame.board, row, col);
+        chessGame.legalMoves = moves;
+        console.log('[SELECT_SQUARE] Legal moves:', moves.length > 0 ? moves : 'none', '| selectedSquare:', chessGame.selectedSquare);
+        
+        // Force re-render to show visual updates
         renderBoard();
+        updateStatus(); // Update status in case of check
+        
+        // Log final state after render
+        setTimeout(() => {
+            console.log('[SELECT_SQUARE] After render - selectedSquare:', chessGame.selectedSquare, '| legalMoves count:', chessGame.legalMoves.length);
+        }, 10);
+        
         return;
     }
 
     if (chessGame.selectedSquare) {
         const move = chessGame.legalMoves.find(m => m.row === row && m.col === col);
-        console.log('[SELECT_SQUARE] Looking for legal move:', { found: !!move });
+        console.log('[SELECT_SQUARE] Looking for legal move in selectedSquare:', { found: !!move, move });
 
         if (move) {
-            console.log('[SELECT_SQUARE] Executing move');
+            console.log('[SELECT_SQUARE] Executing move from', chessGame.selectedSquare, 'to', move);
             chessGame.executeMove(chessGame.selectedSquare, move);
+            return;
+        } else {
+            console.log('[SELECT_SQUARE] Clicked non-legal square - deselecting');
+            deselectAll();
             return;
         }
     }
 
+    // Deselect if clicking on empty square or invalid
     deselectAll();
 }
 
 function deselectAll() {
+    console.log('[DESELECT_ALL] Clearing selection');
     chessGame.selectedSquare = null;
     chessGame.legalMoves = [];
     renderBoard();
+    updateStatus();
 }
 
 function recordMove(from, to, piece, captured) {
@@ -1487,22 +1526,26 @@ function recordMove(from, to, piece, captured) {
     });
 }
 
-function renderBoard() {
-    chessBoardElement.innerHTML = '';
-
+// First render - create all squares and store references
+function initRenderBoard() {
     const kingInCheck = chessGame.gameState.isCheck(chessGame.gameState.currentTurn) && chessGame.gameActive;
     const kingPos = kingInCheck ? chessGame.gameState.findKing(chessGame.gameState.currentTurn) : null;
 
     for (let row = 0; row < 8; row++) {
         for (let col = 0; col < 8; col++) {
-            const square = document.createElement('div');
-
+            // Use BUTTON element instead of DIV for better MCP compatibility
+            const square = document.createElement('button');
+            
             const isWhiteSquare = (row + col) % 2 === 0;
             square.className = `square ${isWhiteSquare ? 'white' : 'black'}`;
             square.dataset.row = row;
             square.dataset.col = col;
-
-            if (chessGame.selectedSquare && chessGame.selectedSquare.row === row && chessGame.selectedSquare.col === col) {
+            // Add chess coordinate like "a1", "h8" for easy referencing
+            const coord = columns[col] + rows[row];
+            square.dataset.chessCoord = coord;
+            
+            if (chessGame.selectedSquare && chessGame.selectedSquare.row === row && 
+                chessGame.selectedSquare.col === col) {
                 square.classList.add('selected');
             }
 
@@ -1522,6 +1565,12 @@ function renderBoard() {
             if (kingPos && kingPos.row === row && kingPos.col === col) {
                 square.classList.add('in-check');
             }
+
+            // Store reference for future updates
+            squareMap[coord] = square;
+
+            // Add click handler directly on button
+            square.onclick = () => selectSquare(row, col);
 
             if (col === 0) {
                 const rankCoord = document.createElement('span');
@@ -1545,9 +1594,89 @@ function renderBoard() {
                 square.appendChild(pieceSpan);
             }
 
-            square.addEventListener('click', () => selectSquare(row, col));
             chessBoardElement.appendChild(square);
         }
+    }
+}
+
+// Update render - only update classes, preserve UIDs
+function updateRenderBoard() {
+    const kingInCheck = chessGame.gameState.isCheck(chessGame.gameState.currentTurn) && chessGame.gameActive;
+    const kingPos = kingInCheck ? chessGame.gameState.findKing(chessGame.gameState.currentTurn) : null;
+
+    for (let row = 0; row < 8; row++) {
+        for (let col = 0; col < 8; col++) {
+            const coord = columns[col] + rows[row];
+            const square = squareMap[coord];
+
+            if (!square) continue; // Skip if not created yet
+
+            // Update selected state
+            if (chessGame.selectedSquare && chessGame.selectedSquare.row === row && 
+                chessGame.selectedSquare.col === col) {
+                square.classList.add('selected');
+            } else {
+                square.classList.remove('selected');
+            }
+
+            // Update legal move indicators
+            const isLegalMove = chessGame.legalMoves.some(m => m.row === row && m.col === col);
+            if (isLegalMove) {
+                square.classList.add('legal-move');
+            } else {
+                square.classList.remove('legal-move');
+            }
+
+            // Update last move indicator
+            if (chessGame.lastMove) {
+                const from = chessGame.lastMove.from;
+                const to = chessGame.lastMove.to;
+
+                if ((from.row === row && from.col === col) || (to.row === row && to.col === col)) {
+                    square.classList.add('last-move');
+                } else {
+                    square.classList.remove('last-move');
+                }
+            }
+
+            // Update check indicator
+            if (kingPos && kingPos.row === row && kingPos.col === col) {
+                square.classList.add('in-check');
+            } else {
+                square.classList.remove('in-check');
+            }
+
+            // Update piece display if changed
+            const currentPiece = chessGame.board.grid[row][col];
+            const existingPieceSpan = square.querySelector('.piece');
+
+            if (currentPiece && !existingPieceSpan) {
+                // Piece was added to this square
+                const pieceSpan = document.createElement('span');
+                pieceSpan.className = `piece ${currentPiece.color}`;
+                pieceSpan.textContent = PIECES[currentPiece.color][currentPiece.type];
+                square.appendChild(pieceSpan);
+            } else if (!currentPiece && existingPieceSpan) {
+                // Piece was removed from this square
+                existingPieceSpan.remove();
+            } else if (existingPieceSpan && currentPiece) {
+                // Piece type/color changed (e.g., promotion)
+                existingPieceSpan.className = `piece ${currentPiece.color}`;
+                existingPieceSpan.textContent = PIECES[currentPiece.color][currentPiece.type];
+            }
+        }
+    }
+}
+
+// Main renderBoard function - use init or update based on state
+function renderBoard() {
+    // Check if squares exist (first render vs updates)
+    const hasSquares = chessBoardElement.children.length > 0;
+
+    if (!hasSquares) {
+        initRenderBoard();
+    } else {
+        updateRenderBoard();
     }
 }
 
@@ -1985,6 +2114,81 @@ async function init() {
         botDifficulty === 'none' ? 'block' : 'none';
 
     if (botDifficulty === 'none') { startTimer(); }
+}
+
+// Initialize squares on first load
+function initializeBoardSquares() {
+    squareMap.clear ? squareMap.clear() : Object.keys(squareMap).forEach(k => delete squareMap[k]);
+    
+    const kingInCheck = chessGame.gameState.isCheck(chessGame.gameState.currentTurn) && chessGame.gameActive;
+    const kingPos = kingInCheck ? chessGame.gameState.findKing(chessGame.gameState.currentTurn) : null;
+
+    for (let row = 0; row < 8; row++) {
+        for (let col = 0; col < 8; col++) {
+            // Use BUTTON element instead of DIV for better MCP compatibility
+            const square = document.createElement('button');
+            
+            const isWhiteSquare = (row + col) % 2 === 0;
+            square.className = `square ${isWhiteSquare ? 'white' : 'black'}`;
+            square.dataset.row = row;
+            square.dataset.col = col;
+            // Add chess coordinate like "a1", "h8" for easy referencing
+            const coord = columns[col] + rows[row];
+            square.dataset.chessCoord = coord;
+            
+            if (chessGame.selectedSquare && chessGame.selectedSquare.row === row && 
+                chessGame.selectedSquare.col === col) {
+                square.classList.add('selected');
+            }
+
+            if (chessGame.legalMoves.some(m => m.row === row && m.col === col)) {
+                square.classList.add('legal-move');
+            }
+
+            if (chessGame.lastMove) {
+                const from = chessGame.lastMove.from;
+                const to = chessGame.lastMove.to;
+
+                if ((from.row === row && from.col === col) || (to.row === row && to.col === col)) {
+                    square.classList.add('last-move');
+                }
+            }
+
+            if (kingPos && kingPos.row === row && kingPos.col === col) {
+                square.classList.add('in-check');
+            }
+
+            // Store reference for future updates
+            squareMap[coord] = square;
+
+            // Add click handler directly on button
+            square.onclick = () => selectSquare(row, col);
+
+            if (col === 0) {
+                const rankCoord = document.createElement('span');
+                rankCoord.className = 'coord-rank';
+                rankCoord.textContent = rows[row];
+                square.appendChild(rankCoord);
+            }
+
+            if (row === 7) {
+                const fileCoord = document.createElement('span');
+                fileCoord.className = 'coord-file';
+                fileCoord.textContent = columns[col];
+                square.appendChild(fileCoord);
+            }
+
+            const piece = chessGame.board.grid[row][col];
+            if (piece) {
+                const pieceSpan = document.createElement('span');
+                pieceSpan.className = `piece ${piece.color}`;
+                pieceSpan.textContent = PIECES[piece.color][piece.type];
+                square.appendChild(pieceSpan);
+            }
+
+            chessBoardElement.appendChild(square);
+        }
+    }
 }
 
 const initAsync = async () => {

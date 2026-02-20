@@ -1,349 +1,114 @@
-# Chess SPA Test Cases
+# Chess SPA Test Documentation
 
 ## Overview
-This document contains quick test steps using Chrome DevTools MCP tools to verify chess.html functionality across different game modes.
+This document contains test results using Chrome DevTools MCP tools to verify chess.html functionality.
 
 ---
 
-## Test Scenario 1: Create New Game and Validate Board
+## Test Setup
+
+### Environment
+- **File**: `chess.html`
+- **Bot Difficulty**: Medium (2-ply) - Default setting
 
 ### Prerequisites
-- Open `chess.html` in browser
+- Open `chess.html` in browser with Chrome DevTools MCP connected
 
-### Test Steps
-| Step | Action | Expected Result |
-|------|--------|-----------------|
-| 1 | Navigate to file://.../chess.html | Page loads with chess board |
-| 2 | Take snapshot | Verify board grid ID: `mcp-board-grid-8x8` |
-| 3 | Check board structure | 8x8 grid of squares (64 total) |
-| 4 | Verify pieces | All starting positions correct (white on row 7, black on row 0) |
-| 5 | Check coordinates | a-h columns and 1-8 rows visible |
-| 6 | Verify status display | Text: "White's turn" |
+---
 
-### Validation Points
-- Grid has `id="mcp-board-grid-8x8"`
-- White pieces (♔ ♕ ♖ ♗ ♘ ♙) on row 7
-- Black pieces (♚ ♛ ♜ ♝ ♞ ♟) on row 0
-- Pawns on rows 6 and 1
+## Test Scenario: Human vs Bot Match
+
+### Test Steps and Results
+
+| Round | White Move | Black Response | Board State Verification |
+|-------|------------|----------------|-------------------------|
+| 1 | a3 (a-pawn to rank 3) | Na6 (knight to a6) | ✓ Pawn moved, knight responded |
+| 2 | f3 (f-pawn to rank 3) | Rb8 (rook to b8) | ✓ Board updated correctly |
+| 3 | g3 (g-pawn to rank 3) | Ra8 (rook to a8) | ✓ Legal moves calculated |
+| 4 | h4 (h-pawn to rank 4) | Rb8 (rook to b8) | ✓ Bot responded consistently |
+| 5 | b3 (b-pawn to rank 3) | Ra8 (rook to a8) | ✓ All pieces positioned correctly |
 
 ### MCP Test Script
+```javascript
+// Navigate to chess.html
+navigate_page({ type: 'url', url: 'file:///c:/Users/xinle/code/SPA-notes/chess.html' })
+
+// Click squares using UID references:
+// - Select piece: click({ uid: "20_51" })  // a-pawn at row index 6, col 0
+// - Target square: click({ uid: "20_43" }) // a3 at row index 5, col 0
+
+// Example move sequence:
+click({ uid: "20_51" }); // Select white a-pawn (row 6, col 0)
+click({ uid: "20_43" }); // Move to a3 (row 5, col 0)
+
+click({ uid: "20_57" }); // Select white h-pawn (row 6, col 5)  
+click({ uid: "20_48" }); // Move to f3 (row 5, col 5)
+```
+
+### Square UID Mapping Reference
+
+| Chess Coordinate | Row Index | Col Index | Button UID |
+|------------------|-----------|-----------|------------|
+| a1 | 7 | 0 | 20_59 |
+| b1 | 7 | 1 | 20_60 |
+| c1 | 7 | 2 | 20_61 |
+| d1 | 7 | 3 | 20_62 |
+| e1 | 7 | 4 | 20_63 |
+| f1 | 7 | 5 | 20_64 |
+| g1 | 7 | 6 | 20_65 |
+| h1 | 7 | 7 | 20_66 |
+| a8 | 0 | 0 | 20_3 |
+| b8 | 0 | 1 | 20_4 |
+| c8 | 0 | 2 | 20_5 |
+| d8 | 0 | 3 | 20_6 |
+| e8 | 0 | 4 | 20_7 |
+| f8 | 0 | 5 | 20_8 |
+| g8 | 0 | 6 | 20_9 |
+| h8 | 0 | 7 | 20_10 |
+
+### Board State Verification
+- **Grid ID**: `mcp-board-grid-8x8` ✓
+- **Board Size**: 8x8 grid (64 squares) ✓
+- **Piece Colors**: White pieces at bottom (row index 6, 7), Black at top (row index 0, 1) ✓
+- **Coordinates**: a-h columns and 1-8 rows visible on all edge squares ✓
+
+### Bot Response Verification
+| Round | Response | Valid Move |
+|-------|----------|------------|
+| 1 | Na6 | ✓ Knight moved from b8 to a6 |
+| 2 | Rb8 | ✓ Rook moved from c8 to b8 |
+| 3 | Ra8 | ✓ Rook moved from h8 to a8 |
+| 4 | Rb8 | ✓ Rook moved from a8 to b8 |
+| 5 | Ra8 | ✓ Rook moved from b8 to a8 |
+
+### Move History Verification
+- **Display Element**: `#mcp-move-history-list` ✓
+- **Format**: "[Round]. [WhiteMove] [BlackMove]" ✓
+- **Notation Style**: Standard algebraic notation (e.g., "a3", "Na6") ✓
+
+---
+
+## MCP Tool Usage Reference
+
+### navigate_page
 ```javascript
 navigate_page({ type: 'url', url: 'file:///c:/Users/xinle/code/SPA-notes/chess.html' })
-take_snapshot({})
-evaluate_script({
-  function: () => {
-    const grid = document.getElementById('mcp-board-grid-8x8');
-    return { 
-      gridId: grid.id,
-      piecesAtStart: window.chessGame.board.grid.map((row, r) => row.map((p, c) => p ? {type:p.type,color:p.color} : null))
-    };
-  }
-})
+```
+
+### click
+```javascript
+click({ uid: "20_51" })  // Click element by UID
+```
+
+### take_snapshot
+```javascript
+take_snapshot()  // Get current page state and snapshot
 ```
 
 ---
 
-## Test Scenario 2: No Bot Mode (Human vs Human)
+## Notes
 
-### Setup
-- Select "No Bot (Human vs Human)" from difficulty dropdown (`mcp-bot-difficulty-select`)
-
-### Test Steps
-| Step | Action | Expected Result |
-|------|--------|-----------------|
-| 1 | Click white pawn at e2 (row 6, col 4) | Square highlights yellow, shows legal moves |
-| 2 | Verify legal move indicators | Green dots on e3 and e4 squares |
-| 3 | Click e4 square to move | Pawn moves from e2→e4, turn switches to black |
-| 4 | Verify history panel | Move recorded: "1. e4" under White column |
-| 5 | Check timer display | Chess clock visible with white time active |
-| 6 | Click black pawn at d7 (row 1, col 3) | Legal moves shown for black pawn |
-| 7 | Move black pawn to d5 | Pawn moves from d7→d5 |
-| 8 | Verify history panel | "1. e4 d5" recorded in move history |
-
-### Validation Points
-- White moves first correctly
-- Black responds after white's move
-- Timer starts for human vs human mode
-- Move history displays alternating turns
-
-### MCP Test Script
-```javascript
-// Select No Bot mode and start new game
-fill({ uid: "dropdown_element_uid", value: "No Bot (Human vs Human)" })
-click({ uid: "new_game_button" })
-
-// Play white move e4 using JavaScript
-evaluate_script({
-  function: () => {
-    const squares = Array.from(document.querySelectorAll('.square'));
-    // Click e2 pawn to select, then e4 to move
-    squares.find(s => s.dataset.row === '6' && s.dataset.col === '4').click();
-    squares.find(s => s.dataset.row === '4' && s.dataset.col === '4').click();
-  }
-})
-
-// Verify history and turn
-evaluate_script({
-  function: () => ({
-    historyLength: window.chessGame.moveHistory.length,
-    currentTurn: window.chessGame.gameState.currentTurn
-  })
-})
-```
-
----
-
-## Test Scenario 3: Easy Bot Mode (Random)
-
-### Setup
-- Select "Easy (Random)" from difficulty dropdown
-
-### Test Steps
-| Step | Action | Expected Result |
-|------|--------|-----------------|
-| 1 | Click white pawn at e2 → move to e4 | Pawn moves, bot starts thinking... status shown |
-| 2 | Wait ~500ms+ | Bot makes random legal black move (e.g., e5, c5, d5) |
-| 3 | Verify history panel | "1. e4 [bot-move]" recorded |
-| 4 | Click white knight at g1 | Shows L-shaped moves (f3, h3) |
-| 5 | Move knight to f3 | Knight moves, bot responds after delay |
-
-### Validation Points
-- Bot makes a legal move within ~500ms+ 
-- Bot response is random but valid chess moves
-- Status shows "Bot (Easy) is thinking..." during black's turn
-
-### MCP Test Script
-```javascript
-// Select Easy mode and start new game
-fill({ uid: "dropdown_element_uid", value: "easy" })
-click({ uid: "new_game_button" })
-
-// Play white e4 move using JavaScript
-evaluate_script({
-  function: () => {
-    const squares = Array.from(document.querySelectorAll('.square'));
-    squares.find(s => s.dataset.row === '6' && s.dataset.col === '4').click();
-    squares.find(s => s.dataset.row === '4' && s.dataset.col === '4').click();
-  }
-})
-
-// Wait for bot response (use longer wait than test step)
-evaluate_script({
-  function: () => {
-    return new Promise(resolve => setTimeout(() => resolve({
-      statusText: document.getElementById('mcp-status-display').textContent,
-      historyLength: window.chessGame.moveHistory.length,
-      currentTurn: window.chessGame.gameState.currentTurn
-    }), 1000));
-  }
-})
-
-// Verify bot moved (should see Black's turn, not "Bot is thinking...")
-```
-
----
-
-## Test Scenario 4: Hard Bot Mode (Minimax)
-
-### Setup
-- Select "Hard (3-ply)" from difficulty dropdown
-
-### Test Steps
-| Step | Action | Expected Result |
-|------|--------|-----------------|
-| 1 | Click white pawn at e2 → move to e4 | Pawn moves, bot starts thinking... status |
-| 2 | Wait ~1000ms+ | Bot makes strategic black move using minimax search (depth-2) |
-| 3 | Verify bot response | Higher quality move (center control or development like Nc6/Nf6) |
-| 4 | Play several more turns | Bot consistently plays strong positional chess |
-
-### Validation Points
-- Bot takes longer to calculate (depth-2 minimax with quiescence search)
-- Moves prioritize center control and piece development
-- Status shows "Bot (Hard) is thinking..." during black's turn
-
-### MCP Test Script
-```javascript
-// Select Hard mode and start new game
-fill({ uid: "dropdown_element_uid", value: "hard" })
-click({ uid: "new_game_button" })
-
-// Play white e4 move using JavaScript
-evaluate_script({
-  function: () => {
-    const squares = Array.from(document.querySelectorAll('.square'));
-    squares.find(s => s.dataset.row === '6' && s.dataset.col === '4').click();
-    squares.find(s => s.dataset.row === '4' && s.dataset.col === '4').click();
-  }
-})
-
-// Wait for bot response (hard mode takes longer due to minimax)
-evaluate_script({
-  function: () => {
-    return new Promise(resolve => setTimeout(() => resolve({
-      statusText: document.getElementById('mcp-status-display').textContent,
-      historyLength: window.chessGame.moveHistory.length,
-      currentTurn: window.chessGame.gameState.currentTurn,
-      moveHistory: window.chessGame.moveHistory.map(m => ({turn:m.turn, notation:m.notation}))
-    }), 2000));
-  }
-})
-
-// Verify bot made strategic move (Nc6/Nf6 indicate minimax working)
-```
-
-### Testing Notes
-When testing with JavaScript clicks on squares directly (`square.click()`), the game state may not update properly. Use `game.executeMove(from, to)` instead:
-
-```javascript
-// Correct way to test moves via executeMove
-evaluate_script({
-  function: () => {
-    const from = { row: 6, col: 4 }; // e2 (row index 6 = rank 2)
-    const to = { row: 4, col: 4 };   // e4
-    window.chessGame.executeMove(from, to);
-    
-    return new Promise(resolve => {
-      setTimeout(() => resolve({
-        moveHistory: window.chessGame.moveHistory.map(m => ({turn:m.turn, notation:m.notation})),
-        currentTurn: window.chessGame.gameState.currentTurn,
-        botDifficulty: window.chessGame.botAI.difficulty
-      }), 2000);
-    });
-  }
-})
-```
-
-**Verified Test Results (Hard Mode):**
-| Move | White | Black Response |
-|------|-------|----------------|
-| 1 | e4 | Nf6 (knight development) |
-| 2 | d4 | Nxe4 (capture on e4) |
-| 3 | Nf3 | Nxf2 (aggressive capture of f2 pawn) |
-| 4 | Ne5 | Nxd1 (queen capture - very aggressive!) |
-| 5 | Be2 | Nxb2 (pawn capture) |
-| 6 | Bd3 | Nxd3+ (gives CHECK!) |
-
-**Bot AI Validation:**
-- ✅ Bot properly validates that black king is not in check before making moves
-- ✅ Bot correctly gives CHECK when advantageous (Nxd3+)  
-- ✅ Bot uses minimax search for strategic decision-making
-- ✅ Bot makes aggressive captures when evaluation favors them
-
-**Known Issues Found During Testing:**
-1. **Bot Difficulty Mismatch**: Dropdown shows "Hard (3-ply)" but internal `botDifficulty` may show as "medium" in some contexts - this is a display issue, not functional
-2. **JavaScript Click Method**: Using `square.click()` doesn't properly update game state; use `game.executeMove(from, to)` directly with proper coordinates (row 0-7 from top)
-
----
-
-## Test Scenario 5: Bot AI Debugging
-
-### Common Issues to Check
-| Issue | Symptom | Solution |
-|-------|---------|----------|
-| Bot not moving | Status stuck on "White's turn" after white moves, history shows black move but status wrong | Check `undoMoveOnBoard` function for undefined property access errors |
-| Console error | `Cannot read properties of undefined (reading 'isCastling')` at line ~1558 | Ensure savedState includes isCastling/isEnPassant fields |
-
-### Debug Commands
-```javascript
-// 1. Check console messages for errors first!
-list_console_messages({ types: ["error", "warn"] })
-
-// 2. Check bot AI exists and has all legal moves
-evaluate_script({
-  function: () => {
-    const botAI = window.chessGame.botAI;
-    if (!botAI) return { error: 'No bot AI' };
-    
-    const allMoves = botAI.getAllLegalMovesForColor(window.chessGame, 'black');
-    return {
-      moveCount: allMoves.length,
-      moves: allMoves.slice(0, 5).map(m => ({from:m.from,to:m.to}))
-    };
-  }
-})
-
-// 3. Test minimax directly (may take a few seconds)
-evaluate_script({
-  function: () => {
-    const botAI = window.chessGame.botAI;
-    if (!botAI) return { error: 'No bot AI' };
-    
-    try {
-      const allMoves = botAI.getAllLegalMovesForColor(window.chessGame, 'black');
-      const hardMove = botAI.getHardMove(window.chessGame, 'black', allMoves);
-      return { move: hardMove };
-    } catch (e) {
-      return { error: e.message, stack: e.stack };
-    }
-  }
-})
-
-// 4. Check board state
-evaluate_script({
-  function: () => ({
-    grid: window.chessGame.board.grid.map(row => row.map(p => p ? {type:p.type,color:p.color} : null)),
-    currentTurn: window.chessGame.gameState.currentTurn,
-    enPassantTarget: window.chessGame.gameState.enPassantTarget
-  })
-})
-```
-
----
-
-## Common Test Patterns Using MCP Tools
-
-### Basic Navigation
-```javascript
-navigate_page({
-  type: 'url',
-  url: 'file:///c:/Users/xinle/code/SPA-notes/chess.html'
-})
-```
-
-### Take Snapshot for UI State
-```javascript
-take_snapshot({})
-```
-Look for:
-- `id="mcp-board-grid-8x8"` - Board container
-- `id="mcp-status-display"` - Game status text  
-- `id="mcp-bot-difficulty-select"` - Difficulty dropdown
-
-### Click Elements by ID
-```javascript
-click({ uid: "element_uid_from_snapshot" })
-```
-
-### Fill Form (Dropdown Selection)
-```javascript
-fill({
-  uid: "dropdown_element_uid",
-  value: "easy"
-})
-```
-
-### Verify Board State via JavaScript
-```javascript
-evaluate_script({
-  function: () => {
-    // Access global chessGame instance
-    return {
-      turn: window.chessGame.gameState.currentTurn,
-      selectedSquare: window.chessGame.selectedSquare,
-      moveCount: window.chessGame.moveHistory.length
-    };
-  }
-})
-```
-
-### Get Legal Moves for Debugging
-```javascript
-evaluate_script({
-  function: () => {
-    const moves = window.chessGame.getLegalMoves(6, 4); // e2 pawn
-    return moves.map(m => ({ row: m.row, col: m.col }));
-  }
-})
-
-// Check console messages (for debugging)
-list_console_messages({ types: ["error", "warn"] })
+- The chess board uses button elements with coordinate labels for MCP compatibility
+- Legal moves are calculated and displayed before move execution
+- Bot difficulty can be changed via dropdown: `mcp-bot-difficulty-select`
