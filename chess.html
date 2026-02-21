@@ -766,12 +766,16 @@ class BotAI {
                 const piece = game.board.grid[row][col];
                 if (piece && piece.color === color) {
                     const legalMoves = game.gameState.getLegalMoves(game.board, row, col);
+                    // LOG: Piece found with its legal moves
+                    console.log(`[BotAI.getAllLegalMoves] ${color} ${piece.type.toUpperCase()} at (${row},${col}) has ${legalMoves.length} legal move(s):`, 
+                        JSON.stringify(legalMoves.map(m => `(${m.row},${m.col})`)));
                     for (const move of legalMoves) {
                         moves.push({ from: { row, col }, to: move, isEnPassant: !!move.isEnPassant });
                     }
                 }
             }
         }
+        console.log(`[BotAI.getAllLegalMovesForColor] ${color} has ${moves.length} total legal move(s)`);
         return moves;
     }
 
@@ -923,6 +927,8 @@ class BotAI {
         const botColor = game.gameState.currentTurn === 'white' ? 'black' : 'white';
         const opponentColor = botColor === 'white' ? 'black' : 'white';
 
+        console.log('[BotAI.getRandomMove] Evaluating random safe moves...');
+        
         const safeMoves = [];
 
         for (const move of allMoves) {
@@ -937,7 +943,15 @@ class BotAI {
 
             this.undoMoveOnBoard(game, savedState);
 
-            if (!kingInCheck) { safeMoves.push(move); }
+            const fromPos = `${columns[move.from.col]}${rows[move.from.row]}`;
+            const toPos = `${columns[move.to.col]}${rows[move.to.row]}`;
+            
+            if (!kingInCheck) { 
+                safeMoves.push(move);
+                console.log(`  [SAFE] ${fromPos} -> ${toPos}`);
+            } else {
+                console.log(`  [CHECK] ${fromPos} -> ${toPos}`);
+            }
         }
 
         const candidates = safeMoves.length > 0 ? safeMoves : allMoves;
@@ -945,6 +959,7 @@ class BotAI {
         if (candidates.length === 0) return null;
         
         const selected = candidates[Math.floor(Math.random() * candidates.length)];
+        console.log(`[BotAI.getRandomMove] Selected: ${columns[selected.from.col]}${rows[selected.from.row]} -> ${columns[selected.to.col]}${rows[selected.to.row]}`);
         return { from: selected.from, to: selected.to };
     }
 
@@ -980,6 +995,7 @@ class BotAI {
         
         const opponentColor = botColor === 'white' ? 'black' : 'white';
 
+        console.log('[BotAI.getMediumMove] Evaluating moves...');
         for (const move of allMoves) {
             const savedState = this.makeMoveOnBoard(game, move.from, move.to);
 
@@ -994,8 +1010,13 @@ class BotAI {
             if (!kingInCheck) {
                 score = this.evaluateBoard(game, botColor);
 
+                const fromPos = `(${move.from.row},${move.from.col})`;
+                const toPos = `(${move.to.row},${move.to.col})`;
+
+                const reasons = [];
                 if (this.isRepetition(game.gameState, move)) { 
                     score -= 200; 
+                    reasons.push('repetition(-200)');
                 }
 
                 const isEarlyGame = game.moveHistory.length < 15;
@@ -1004,6 +1025,7 @@ class BotAI {
                     const startRow = botColor === 'white' ? 7 : 0;
                     if (move.from.row !== startRow || move.to.row !== startRow) {
                         score -= 300;
+                        reasons.push('earlyKing(-300)');
                     }
                 }
 
@@ -1011,14 +1033,27 @@ class BotAI {
                 if (pieceTypeForRook === 'r' && 
                    ((move.to.row === 0 && move.to.col === 0) || (move.to.row === 7 && move.to.col === 7))) {
                     score -= 50;
+                    reasons.push('rookStart(-50)');
                 }
+
+                console.log(`[BotAI.getMediumMove] ${fromPos} -> ${toPos}: score=${score.toFixed(1)} (${reasons.join(', ')})`);
+            } else {
+                const fromPos = `(${move.from.row},${move.from.col})`;
+                const toPos = `(${move.to.row},${move.to.col})`;
+                console.log(`[BotAI.getMediumMove] ${fromPos} -> ${toPos}: kingInCheck`);
             }
 
             this.undoMoveOnBoard(game, savedState);
 
-            if (score > bestScore) { bestScore = score; bestScoreMoves = [move]; }
-            else if (score === bestScore) { bestScoreMoves.push(move); }
+            if (score > bestScore) { 
+                bestScore = score; 
+                bestScoreMoves = [move]; 
+            } else if (score === bestScore) { 
+                bestScoreMoves.push(move); 
+            }
         }
+        
+        console.log(`[BotAI.getMediumMove] Best score: ${bestScore}, Options count: ${bestScoreMoves.length}`);
 
         return bestScoreMoves.length > 0
             ? bestScoreMoves[Math.floor(Math.random() * bestScoreMoves.length)]
@@ -1180,6 +1215,9 @@ class BotAI {
 
     makeMove(game) {
         const botColor = 'black';
+        console.log(`\n=== [BotAI.makeMove] Black's Turn ===`);
+        console.log('[BotAI.makeMove] Bot difficulty:', this.difficulty);
+        
         const allMoves = this.getAllLegalMovesForColor(game, botColor);
 
         if (allMoves.length === 0) {
@@ -1187,18 +1225,37 @@ class BotAI {
             else { return { type: 'stalemate' }; }
         }
 
+        console.log(`[BotAI.makeMove] All ${allMoves.length} legal moves:`);
+        allMoves.forEach((m, i) => {
+            const fromPos = `${columns[m.from.col]}${rows[m.from.row]}`;
+            const toPos = `${columns[m.to.col]}${rows[m.to.row]}`;
+            console.log(`  [${i}] ${fromPos} -> ${toPos}`);
+        });
+
         let bestMove = null;
 
         switch (this.difficulty) {
-            case 'easy': bestMove = this.getRandomMove(game, allMoves); break;
-            case 'medium': bestMove = this.getMediumMove(game, botColor, allMoves); break;
-            case 'hard': bestMove = this.getHardMove(game, botColor, allMoves); break;
+            case 'easy': 
+                bestMove = this.getRandomMove(game, allMoves);
+                break;
+            case 'medium': 
+                bestMove = this.getMediumMove(game, botColor, allMoves); 
+                console.log('[BotAI.makeMove] Medium difficulty selected move');
+                break;
+            case 'hard': 
+                bestMove = this.getHardMove(game, botColor, allMoves); 
+                console.log('[BotAI.makeMove] Hard difficulty selected move');
+                break;
         }
 
         if (!bestMove || !bestMove.from || !bestMove.to) {
             console.warn('[BotAI.makeMove] No valid move found, using first available');
             bestMove = allMoves[0];
         }
+
+        const fromPos = `${columns[bestMove.from.col]}${rows[bestMove.from.row]}`;
+        const toPos = `${columns[bestMove.to.col]}${rows[bestMove.to.row]}`;
+        console.log(`[BotAI.makeMove] SELECTED: ${fromPos} -> ${toPos}\n`);
 
         return { type: 'move', from: bestMove.from, to: bestMove.to };
     }
@@ -1420,7 +1477,7 @@ window.chessTestAPI = {
     getBoardState: () => chessGame.board.grid,
     getCurrentTurn: () => chessGame.gameState.currentTurn,
     getSelectedSquare: () => chessGame.selectedSquare,
-    getLegalMoves: (row, col) => chessGame.getLegalMoves(row, col),
+    getLegalMoves: (row, col) => chessGame.getLegalMoves(chessGame.board, row, col),
     getMoveHistory: () => chessGame.moveHistory,
     isGameActive: () => chessGame.gameActive
 };
