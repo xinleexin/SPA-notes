@@ -779,40 +779,57 @@ class BotAI {
         return moves;
     }
 
-    makeMoveOnBoard(game, from, to) {
-        const piece = game.board.grid[from.row][from.col];
-        const targetPiece = game.board.grid[to.row][to.col];
-
-        const savedState = {
-            piece: piece,
-            target: targetPiece,
-            fromRow: from.row, fromCol: from.col,
-            toRow: to.row, toCol: to.col,
-            isCastling: to.isCastling || null,
-            isEnPassant: to.isEnPassant || false,
-            enPassantTarget: game.gameState.enPassantTarget,
-            castlingRights: { ...game.gameState.castlingRights },
-            whiteKingPos: { ...game.gameState.whiteKingPos },
-            blackKingPos: { ...game.gameState.blackKingPos }
+    // Board cloning approach for safe move evaluation without mutating original state
+    cloneGameForEvaluation(game) {
+        const clonedBoard = new ChessBoard();
+        
+        // Deep copy grid with piece instances (not just data)
+        clonedBoard.grid = game.board.copyGrid().map((row, rIdx) => 
+            row.map((pieceData, cIdx) => {
+                if (!pieceData) return null;
+                return createPiece(pieceData.type, pieceData.color);
+            })
+        );
+        
+        const clonedGameState = new GameState(clonedBoard);
+        clonedGameState.currentTurn = game.gameState.currentTurn;
+        clonedGameState.enPassantTarget = game.gameState.enPassantTarget ? {...game.gameState.enPassantTarget} : null;
+        clonedGameState.castlingRights = {
+            whiteKingMoved: game.gameState.castlingRights.whiteKingMoved,
+            blackKingMoved: game.gameState.castlingRights.blackKingMoved,
+            whiteRookKingSideMoved: game.gameState.castlingRights.whiteRookKingSideMoved,
+            whiteRookQueenSideMoved: game.gameState.castlingRights.whiteRookQueenSideMoved,
+            blackRookKingSideMoved: game.gameState.castlingRights.blackRookKingSideMoved,
+            blackRookQueenSideMoved: game.gameState.castlingRights.blackRookQueenSideMoved
         };
+        clonedGameState.lastMove = game.gameState.lastMove ? {...game.gameState.lastMove} : null;
+        clonedGameState.whiteKingPos = {...game.gameState.whiteKingPos};
+        clonedGameState.blackKingPos = {...game.gameState.blackKingPos};
+        
+        return { board: clonedBoard, gameState: clonedGameState };
+    }
+
+    makeMoveOnClonedGame(clonedGame, from, to) {
+        const piece = clonedGame.board.grid[from.row][from.col];
+        const targetPiece = clonedGame.board.grid[to.row][to.col];
 
         if (to.isEnPassant) {
             const capturedPawnRow = piece.color === 'white' ? to.row + 1 : to.row - 1;
-            game.board.grid[capturedPawnRow][to.col] = null;
+            clonedGame.board.grid[capturedPawnRow][to.col] = null;
         }
 
         if (to && to.isCastling === 'kingside') {
             const rookRow = from.row;
-            game.board.grid[rookRow][5] = game.board.grid[rookRow][7];
-            game.board.grid[rookRow][7] = null;
+            clonedGame.board.grid[rookRow][5] = clonedGame.board.grid[rookRow][7];
+            clonedGame.board.grid[rookRow][7] = null;
             const colorKey = piece.color === 'white' ? 'whiteRookKingSideMoved' : 'blackRookKingSideMoved';
-            game.gameState.castlingRights[colorKey] = true;
+            clonedGame.gameState.castlingRights[colorKey] = true;
         } else if (to && to.isCastling === 'queenside') {
             const rookRow = from.row;
-            game.board.grid[rookRow][3] = game.board.grid[rookRow][0];
-            game.board.grid[rookRow][0] = null;
+            clonedGame.board.grid[rookRow][3] = clonedGame.board.grid[rookRow][0];
+            clonedGame.board.grid[rookRow][0] = null;
             const colorKey = piece.color === 'white' ? 'whiteRookQueenSideMoved' : 'blackRookQueenSideMoved';
-            game.gameState.castlingRights[colorKey] = true;
+            clonedGame.gameState.castlingRights[colorKey] = true;
         }
 
         if (piece.type === 'r') {
@@ -822,67 +839,40 @@ class BotAI {
             const blackKingside = piece.color === 'black' && from.row === 0 && from.col === 7;
 
             if (piece.color === 'white') {
-                game.gameState.castlingRights.whiteRookQueenSideMoved |= whiteQueenside;
-                game.gameState.castlingRights.whiteRookKingSideMoved |= whiteKingside;
+                clonedGame.gameState.castlingRights.whiteRookQueenSideMoved |= whiteQueenside;
+                clonedGame.gameState.castlingRights.whiteRookKingSideMoved |= whiteKingside;
             } else {
-                game.gameState.castlingRights.blackRookQueenSideMoved |= blackQueenside;
-                game.gameState.castlingRights.blackRookKingSideMoved |= blackKingside;
+                clonedGame.gameState.castlingRights.blackRookQueenSideMoved |= blackQueenside;
+                clonedGame.gameState.castlingRights.blackRookKingSideMoved |= blackKingside;
             }
         }
 
         if (piece.type === 'k') {
             const colorKey = piece.color === 'white' ? 'whiteKingMoved' : 'blackKingMoved';
-            game.gameState.castlingRights[colorKey] = true;
-            if (piece.color === 'white') { game.gameState.whiteKingPos = { row: to.row, col: to.col }; }
-            else { game.gameState.blackKingPos = { row: to.row, col: to.col }; }
+            clonedGame.gameState.castlingRights[colorKey] = true;
+            if (piece.color === 'white') { clonedGame.gameState.whiteKingPos = { row: to.row, col: to.col }; }
+            else { clonedGame.gameState.blackKingPos = { row: to.row, col: to.col }; }
         }
 
-        game.board.grid[to.row][to.col] = piece;
-        game.board.grid[from.row][from.col] = null;
+        clonedGame.board.grid[to.row][to.col] = piece;
+        clonedGame.board.grid[from.row][from.col] = null;
 
         if (piece.type === 'p') {
             const lastRowWhite = 0;   // White reaches row 0
             const lastRowBlack = 7;   // Black reaches row 7
             
             if (to.row === lastRowWhite || to.row === lastRowBlack) {
-                game.board.grid[to.row][to.col] = new Queen(piece.color);
+                clonedGame.board.grid[to.row][to.col] = new Queen(piece.color);
             }
         }
 
         if (to.isDoublePawn) {
-            game.gameState.enPassantTarget = { row: Math.floor((from.row + to.row) / 2), col: from.col };
-        } else { game.gameState.enPassantTarget = null; }
-
-        return savedState;
+            clonedGame.gameState.enPassantTarget = { row: Math.floor((from.row + to.row) / 2), col: from.col };
+        } else { clonedGame.gameState.enPassantTarget = null; }
     }
 
-    undoMoveOnBoard(game, savedState) {
-        const { piece, target, fromRow, fromCol, toRow, toCol } = savedState;
-
-        game.gameState.castlingRights = { ...savedState.castlingRights };
-
-        if (savedState.isCastling === 'kingside') {
-            const backRow = piece.color === 'white' ? 7 : 0;
-            game.board.grid[backRow][7] = game.board.grid[backRow][5];
-            game.board.grid[backRow][5] = null;
-        } else if (savedState.isCastling === 'queenside') {
-            const backRow = piece.color === 'white' ? 7 : 0;
-            game.board.grid[backRow][0] = game.board.grid[backRow][3];
-            game.board.grid[backRow][3] = null;
-        }
-
-        game.board.grid[fromRow][fromCol] = piece;
-        game.board.grid[toRow][toCol] = target;
-
-        if (savedState.isEnPassant) {
-            const capturedColor = piece.color === 'white' ? 'black' : 'white';
-            game.board.grid[toRow][toCol] = new Pawn(capturedColor);
-        }
-
-        game.gameState.whiteKingPos = { ...savedState.whiteKingPos };
-        game.gameState.blackKingPos = { ...savedState.blackKingPos };
-
-        game.gameState.enPassantTarget = savedState.enPassantTarget;
+    evaluateBoardOnCloned(clonedGame, botColor) {
+        return this.evaluateBoard(clonedGame, botColor);
     }
 
     evaluateBoard(game, botColor) {
@@ -932,16 +922,21 @@ class BotAI {
         const safeMoves = [];
 
         for (const move of allMoves) {
-            const savedState = this.makeMoveOnBoard(game, move.from, move.to);
+            // Clone game state safely for testing this move
+            const clonedGame = this.cloneGameForEvaluation(game);
             
-            const piece = savedState.piece;
+            // Make the test move on the clone
+            this.makeMoveOnClonedGame(clonedGame, move.from, move.to);
+            
+            // Update turn after the move
+            clonedGame.gameState.switchTurn();
+            
             let kingInCheck = false;
-            if (piece && !savedState.isCastling) {
-                const kingPos = botColor === 'white' ? game.gameState.whiteKingPos : game.gameState.blackKingPos;
-                kingInCheck = game.gameState.isSquareUnderAttack(game.board, kingPos.row, kingPos.col, opponentColor);
+            const piece = clonedGame.board.grid[move.to.row][move.to.col];
+            if (piece && !move.to.isCastling) {
+                const kingPos = botColor === 'white' ? clonedGame.gameState.whiteKingPos : clonedGame.gameState.blackKingPos;
+                kingInCheck = clonedGame.gameState.isSquareUnderAttack(clonedGame.board, kingPos.row, kingPos.col, opponentColor);
             }
-
-            this.undoMoveOnBoard(game, savedState);
 
             const fromPos = `${columns[move.from.col]}${rows[move.from.row]}`;
             const toPos = `${columns[move.to.col]}${rows[move.to.row]}`;
@@ -997,30 +992,37 @@ class BotAI {
 
         console.log('[BotAI.getMediumMove] Evaluating moves...');
         for (const move of allMoves) {
-            const savedState = this.makeMoveOnBoard(game, move.from, move.to);
-
+            // Clone game state safely for testing this move
+            const clonedGame = this.cloneGameForEvaluation(game);
+            
+            // Make the test move on the clone
+            this.makeMoveOnClonedGame(clonedGame, move.from, move.to);
+            
             let kingInCheck = false;
-            const piece = savedState.piece;
-            if (piece && !savedState.isCastling) {
-                const kingPos = botColor === 'white' ? game.gameState.whiteKingPos : game.gameState.blackKingPos;
-                kingInCheck = game.gameState.isSquareUnderAttack(game.board, kingPos.row, kingPos.col, opponentColor);
+            const piece = clonedGame.board.grid[move.to.row][move.to.col];
+            if (piece && !move.to.isCastling) {
+                const kingPos = botColor === 'white' ? clonedGame.gameState.whiteKingPos : clonedGame.gameState.blackKingPos;
+                kingInCheck = clonedGame.gameState.isSquareUnderAttack(clonedGame.board, kingPos.row, kingPos.col, opponentColor);
             }
 
             let score = -Infinity;
             if (!kingInCheck) {
-                score = this.evaluateBoard(game, botColor);
+                // Evaluate the board state after this move
+                score = this.evaluateBoard(clonedGame, botColor);
 
                 const fromPos = `(${move.from.row},${move.from.col})`;
                 const toPos = `(${move.to.row},${move.to.col})`;
 
                 const reasons = [];
-                if (this.isRepetition(game.gameState, move)) { 
+                
+                // Check for repetition in cloned game's history (we need to simulate it)
+                if (this.isRepetition(clonedGame, move)) { 
                     score -= 200; 
                     reasons.push('repetition(-200)');
                 }
 
-                const isEarlyGame = game.moveHistory.length < 15;
-                const pieceType = savedState.piece ? savedState.piece.type : '';
+                const isEarlyGame = clonedGame.moveHistory.length < 15;
+                const pieceType = piece ? piece.type : '';
                 if (pieceType === 'k' && isEarlyGame) {
                     const startRow = botColor === 'white' ? 7 : 0;
                     if (move.from.row !== startRow || move.to.row !== startRow) {
@@ -1029,7 +1031,8 @@ class BotAI {
                     }
                 }
 
-                const pieceTypeForRook = savedState.piece ? savedState.piece.type : '';
+                // Check for rook on starting squares
+                const pieceTypeForRook = piece ? piece.type : '';
                 if (pieceTypeForRook === 'r' && 
                    ((move.to.row === 0 && move.to.col === 0) || (move.to.row === 7 && move.to.col === 7))) {
                     score -= 50;
@@ -1042,8 +1045,6 @@ class BotAI {
                 const toPos = `(${move.to.row},${move.to.col})`;
                 console.log(`[BotAI.getMediumMove] ${fromPos} -> ${toPos}: kingInCheck`);
             }
-
-            this.undoMoveOnBoard(game, savedState);
 
             if (score > bestScore) { 
                 bestScore = score; 
@@ -1064,17 +1065,19 @@ class BotAI {
         const safeMoves = [];
         
         for (const move of allMoves) {
-            const savedState = this.makeMoveOnBoard(game, move.from, move.to);
+            // Clone game state safely
+            const clonedGame = this.cloneGameForEvaluation(game);
             
-            const piece = savedState.piece;
+            // Make the test move on clone
+            this.makeMoveOnClonedGame(clonedGame, move.from, move.to);
+            
             let kingInCheck = false;
-            if (piece && !savedState.isCastling) {
+            const piece = clonedGame.board.grid[move.to.row][move.to.col];
+            if (piece && !move.to.isCastling) {
                 const opponentColor = botColor === 'white' ? 'black' : 'white';
-                const kingPos = botColor === 'white' ? game.gameState.whiteKingPos : game.gameState.blackKingPos;
-                kingInCheck = game.gameState.isSquareUnderAttack(game.board, kingPos.row, kingPos.col, opponentColor);
+                const kingPos = botColor === 'white' ? clonedGame.gameState.whiteKingPos : clonedGame.gameState.blackKingPos;
+                kingInCheck = clonedGame.gameState.isSquareUnderAttack(clonedGame.board, kingPos.row, kingPos.col, opponentColor);
             }
-            
-            this.undoMoveOnBoard(game, savedState);
             
             if (!kingInCheck) { safeMoves.push(move); }
         }
@@ -1085,54 +1088,41 @@ class BotAI {
             return null;
         }
 
-        const scoredMoves = candidates.map(move => ({
-            move,
-            score: this.pieceValues[game.board.grid[move.to.row][move.to.col]?.type || 0] * 10 + 
-                   (move.isEnPassant ? 50 : 0)
-        }));
-        
-        scoredMoves.sort((a, b) => b.score - a.score);
-
         let bestMove = null;
         let bestScore = -Infinity;
 
-        for (const item of scoredMoves) {
-            const savedState = this.makeMoveOnBoard(game, item.move.from, item.move.to);
-
-            const opponentColor = botColor === 'white' ? 'black' : 'white';
-            let oppScore = this.minimax(game, opponentColor, 1);
+        for (const move of candidates) {
+            // Clone game state safely
+            const clonedGame = this.cloneGameForEvaluation(game);
             
-            const piece = savedState.piece;
-            if (piece) {
-                const kingPos = botColor === 'white' ? game.gameState.whiteKingPos : game.gameState.blackKingPos;
-                
-                this.undoMoveOnBoard(game, savedState);
-                
-                let checkPenalty = 0;
-                if (game.gameState.isSquareUnderAttack(game.board, kingPos.row, kingPos.col, opponentColor)) {
-                    checkPenalty = -500;
-                }
-                
-                this.makeMoveOnBoard(game, item.move.from, item.move.to);
-                oppScore += checkPenalty;
+            // Make the test move on clone
+            this.makeMoveOnClonedGame(clonedGame, move.from, move.to);
+            
+            const opponentColor = botColor === 'white' ? 'black' : 'white';
+            let oppScore = this.minimax(clonedGame, opponentColor, 1);
+            
+            // Calculate check penalty based on cloned game state
+            let checkPenalty = 0;
+            if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, 
+                botColor === 'white' ? clonedGame.gameState.whiteKingPos : clonedGame.gameState.blackKingPos,
+                opponentColor)) {
+                checkPenalty = -500;
             }
-
-            this.undoMoveOnBoard(game, savedState);
+            
+            const score = -oppScore + checkPenalty;
 
             let repetitionPenalty = 0;
-            if (this.isRepetition(game.gameState, item.move)) { repetitionPenalty = -300; }
+            if (this.isRepetition(clonedGame, move)) { repetitionPenalty = -300; }
 
-            const score = -oppScore + repetitionPenalty;
-
-            const isEarlyGame = game.moveHistory.length < 15;
-            const pieceType = savedState.piece ? savedState.piece.type : '';
+            const isEarlyGame = clonedGame.moveHistory.length < 15;
+            const pieceType = clonedGame.board.grid[move.to.row][move.to.col] ? clonedGame.board.grid[move.to.row][move.to.col].type : '';
             if (pieceType === 'k' && isEarlyGame) {
                 score -= 200;
             }
 
             if (score > bestScore) {
                 bestScore = score;
-                bestMove = item.move;
+                bestMove = move;
             }
         }
 
@@ -1140,9 +1130,6 @@ class BotAI {
     }
 
     minimax(game, color, depth, alpha = -Infinity, beta = Infinity) {
-        const savedWhiteKingPos = { ...game.gameState.whiteKingPos };
-        const savedBlackKingPos = { ...game.gameState.blackKingPos };
-
         const moves = this.getAllLegalMovesForColor(game, color);
 
         if (moves.length === 0 || depth === 0) {
@@ -1154,8 +1141,6 @@ class BotAI {
             } else {
                 score = this.evaluateBoardWithCaptures(game, color);
             }
-            game.gameState.whiteKingPos = savedWhiteKingPos;
-            game.gameState.blackKingPos = savedBlackKingPos;
             return score;
         }
 
@@ -1172,25 +1157,32 @@ class BotAI {
         if (color === 'black') {
             bestScore = alpha;
             for (const item of scoredMoves) {
-                const savedState = this.makeMoveOnBoard(game, item.move.from, item.move.to);
-                const score = this.minimax(game, 'white', depth - 1, bestScore, beta);
-                this.undoMoveOnBoard(game, savedState);
+                // Clone game state safely
+                const clonedGame = this.cloneGameForEvaluation(game);
+                
+                // Make the test move on clone
+                this.makeMoveOnClonedGame(clonedGame, item.move.from, item.move.to);
+                
+                // After making a move, it's white's turn next
+                const score = this.minimax(clonedGame, 'white', depth - 1, bestScore, beta);
                 bestScore = Math.max(bestScore, score);
                 if (bestScore >= beta) { break; }
             }
         } else {
             bestScore = beta;
             for (const item of scoredMoves) {
-                const savedState = this.makeMoveOnBoard(game, item.move.from, item.move.to);
-                const score = this.minimax(game, 'black', depth - 1, alpha, bestScore);
-                this.undoMoveOnBoard(game, savedState);
+                // Clone game state safely
+                const clonedGame = this.cloneGameForEvaluation(game);
+                
+                // Make the test move on clone
+                this.makeMoveOnClonedGame(clonedGame, item.move.from, item.move.to);
+                
+                // After making a move, it's black's turn next
+                const score = this.minimax(clonedGame, 'black', depth - 1, alpha, bestScore);
                 bestScore = Math.min(bestScore, score);
                 if (bestScore <= alpha) { break; }
             }
         }
-
-        game.gameState.whiteKingPos = savedWhiteKingPos;
-        game.gameState.blackKingPos = savedBlackKingPos;
 
         return bestScore;
     }

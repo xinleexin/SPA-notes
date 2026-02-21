@@ -3,6 +3,8 @@
 ## Overview
 This document contains quick test steps using Chrome DevTools MCP tools to verify chess.html functionality across different game modes.
 
+## **Important notice**
+Use Click from Chrome DevTools MCP to select and move pieces on the chessboard.
 ---
 
 ## Test Scenario 1: Create New Game and Validate Board
@@ -53,29 +55,6 @@ navigate_page({ type: 'url', url: 'file:///c:/Users/xinle/code/SPA-notes/chess.h
 - Black responds after white's move
 - Timer starts for human vs human mode
 - Move history displays alternating turns
-
----
-
-## Test Scenario 3: MCP API Testing - Legal Moves Calculation
-
-### Setup
-- Ensure chess.html is loaded with default settings
-
-### Test Steps
-| Step | Action | Expected Result |
-|------|--------|-----------------|
-| 1 | Click white pawn at e2 (row 6, col 4) | Pawn selected with 2 legal moves (e3, e4) |
-| 2 | Verify using chessTestAPI | `window.chessTestAPI.getLegalMoves(6, 4)` returns array of 2 move objects |
-| 3 | Click white knight at b1 (row 7, col 1) | Knight selected with 2 legal moves |
-| 4 | Verify using chessTestAPI | `window.chessTestAPI.getLegalMoves(7, 1)` returns array of 2 move objects: [{row:5,col:0}, {row:5,col:2}] |
-| 5 | Click white rook at a1 (row 7, col 0) | Rook has 0 legal moves initially (blocked by pawn on a2) |
-
-### Validation Points
-- `chessTestAPI.getLegalMoves(row, col)` correctly calculates legal moves for all piece types
-- Pawns have correct forward movement and double-step options
-- Knights can jump over pieces with L-shaped movements
-- Rooks are blocked by own pieces (correct chess behavior)
-- API returns proper move objects with row/col coordinates
 
 ---
 

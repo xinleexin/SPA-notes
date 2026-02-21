@@ -217,7 +217,7 @@ When testing with chrome-devtools-mcp:
   getBoardState: () => chessGame.board.grid,     // Get current piece positions as 8x8 array
   getCurrentTurn: () => chessGame.gameState.currentTurn,
   getSelectedSquare: () => chessGame.selectedSquare,
-  getLegalMoves: (row, col) => chessGame.getLegalMoves(row, col),
+  getLegalMoves: (row, col) => chessGame.getLegalMoves(chessGame.board, row, col),
   getMoveHistory: () => chessGame.moveHistory,
   isGameActive: () => chessGame.gameActive
 }
@@ -380,7 +380,90 @@ BotAI.makeMove()
 
 ---
 
-### File Structure (Updated)
+## Chess Medium Bot Repetition Detection Bug (2026-02-20)
+
+### Issue Description
+The Medium bot difficulty in chess.html exhibited an infinite loop bug where it would move the black rook from Rb8 to Ra8 and back repeatedly, creating a cycle that never ended.
+
+**Test sequence**: d4, Na6, e3, Rb8, e4, Ra8, f3, Rb8
+
+### Root Cause
+The `BotAI.isRepetition()` method expects the full ChessGame object (which has `moveHistory` property), but was being called with only `game.gameState` in two locations:
+
+```javascript
+// BUGGY CODE - Line 1039 and 1175:
+if (this.isRepetition(game.gameState, move)) {
+    score -= 200;
+```
+
+The GameState class does NOT have a `moveHistory` property. Only the ChessGame class has this:
+
+```javascript
+class ChessGame {
+    constructor(board) {
+        // ...
+        this.moveHistory = [];  // <-- This is where history is stored!
+    }
+}
+
+class GameState {
+    constructor(board) {
+        this.board = board;
+        // NO moveHistory here!
+    }
+}
+```
+
+### Why This Caused the Rb8/Ra8 Loop
+1. When evaluating potential moves, `isRepetition()` returned false (because `game.gameState.moveHistory` was undefined)
+2. The repetition penalty of -200 was never applied
+3. Without this penalty, moving back to b8 after Ra8 had equal or better score than making a different move
+4. This created an infinite loop: Rb8 → Ra8 → Rb8 → Ra8...
+
+### Fix Applied
+Changed both calls from `isRepetition(game.gameState, ...)` to `isRepetition(game, ...)`:
+
+```javascript
+// FIXED CODE - Line 1039 and 1175:
+if (this.isRepetition(game, move)) {
+    score -= 200;
+```
+
+### How It Was Fixed in chess.html
+**Line ~1039** in `getMediumMove()` method:
+```javascript
+// Before:
+if (this.isRepetition(game.gameState, move)) { 
+
+// After:  
+if (this.isRepetition(game, move)) {
+```
+
+**Line ~1175** in `getHardMove()` method:
+```javascript
+// Before:
+if (this.isRepetition(game.gameState, item.move)) {
+
+// After:
+if (this.isRepetition(game, item.move)) {
+```
+
+### Regression Analysis
+This was a **regression bug** introduced during code refactoring. The original implementation correctly passed the ChessGame object to `isRepetition()`, but at some point in the refactor, it was accidentally changed to pass only `game.gameState`. This is a common type of error that occurs when:
+
+1. Methods are moved between classes
+2. Variable names change during refactoring
+3. Code is copied/pasted without full context review
+
+### Prevention for Future Refactors
+- Always verify object signatures match expected parameters when moving methods
+- Add JSDoc type hints to method signatures: `@param {ChessGame} game`
+- Run the Medium bot test sequence after any changes to BotAI class
+- Consider adding unit tests specifically for repetition detection
+
+---
+
+## File Structure (Updated)
 
 | File | Purpose |
 |------|---------|
