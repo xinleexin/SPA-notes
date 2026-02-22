@@ -796,7 +796,7 @@ class BotAI {
         clonedGameState.enPassantTarget = game.gameState.enPassantTarget ? {...game.gameState.enPassantTarget} : null;
         clonedGameState.castlingRights = {
             whiteKingMoved: game.gameState.castlingRights.whiteKingMoved,
-            blackKingMoved: game.gameState.castlingRights.blackKingMoved,
+            blackKingMoved: game.gameState.blackKingMoved,
             whiteRookKingSideMoved: game.gameState.castlingRights.whiteRookKingSideMoved,
             whiteRookQueenSideMoved: game.gameState.castlingRights.whiteRookQueenSideMoved,
             blackRookKingSideMoved: game.gameState.castlingRights.blackRookKingSideMoved,
@@ -806,7 +806,11 @@ class BotAI {
         clonedGameState.whiteKingPos = {...game.gameState.whiteKingPos};
         clonedGameState.blackKingPos = {...game.gameState.blackKingPos};
         
-        return { board: clonedBoard, gameState: clonedGameState };
+        return { 
+            board: clonedBoard, 
+            gameState: clonedGameState,
+            moveHistory: game.moveHistory || []  // Include move history for isRepetition checks
+        };
     }
 
     makeMoveOnClonedGame(clonedGame, from, to) {
@@ -985,12 +989,18 @@ class BotAI {
     }
 
     getMediumMove(game, botColor, allMoves) {
+        // Defensive: ensure allMoves is valid
+        if (!allMoves || !Array.isArray(allMoves) || allMoves.length === 0) {
+            console.error('[BotAI.getMediumMove] Invalid or empty allMoves:', allMoves);
+            return null;
+        }
+        
         let bestScore = -Infinity;
         let bestScoreMoves = [];
         
         const opponentColor = botColor === 'white' ? 'black' : 'white';
 
-        console.log('[BotAI.getMediumMove] Evaluating moves...');
+        console.log('[BotAI.getMediumMove] Evaluating', allMoves.length, 'moves...');
         for (const move of allMoves) {
             // Clone game state safely for testing this move
             const clonedGame = this.cloneGameForEvaluation(game);
@@ -1056,9 +1066,13 @@ class BotAI {
         
         console.log(`[BotAI.getMediumMove] Best score: ${bestScore}, Options count: ${bestScoreMoves.length}`);
 
-        return bestScoreMoves.length > 0
+        // Return move or null if none found
+        const result = bestScoreMoves.length > 0
             ? bestScoreMoves[Math.floor(Math.random() * bestScoreMoves.length)]
-            : allMoves[0];
+            : (allMoves && allMoves.length > 0) ? allMoves[0] : null;
+            
+        console.log('[BotAI.getMediumMove] Result:', result ? 'valid move' : 'null');
+        return result;
     }
 
     getHardMove(game, botColor, allMoves) {
@@ -1457,8 +1471,18 @@ const rows = ['8', '7', '6', '5', '4', '3', '2', '1'];
 // Store references to board squares for efficient updates
 const squareMap = {}; // keyed by data-chessCoord
 
+const initialBotDifficulties = {
+    'none': 'none',
+    'easy': 'easy', 
+    'medium': 'medium',
+    'hard': 'hard'
+};
+
+// Get bot difficulty from dropdown, default to medium if not found
+const selectElement = document.getElementById('mcp-bot-difficulty-select');
+let botDifficulty = initialBotDifficulties[selectElement?.value] || 'medium';
+
 let chessGame;
-let botDifficulty = 'hard';
 window.chessApp = {
     getChessGame: () => chessGame,
     getBotDifficulty: () => botDifficulty,
@@ -2159,6 +2183,12 @@ function setupEventListeners() {
 
 async function init() {
     console.log('[INIT] Starting initialization...');
+    
+    // Update bot difficulty from dropdown to ensure consistency
+    const selectElement = document.getElementById('mcp-bot-difficulty-select');
+    botDifficulty = initialBotDifficulties[selectElement?.value] || 'medium';
+    
+    console.log('[INIT] Bot difficulty:', botDifficulty);
     setupEventListeners();
 
     console.log('[INIT] Calling chessGame.init...');
