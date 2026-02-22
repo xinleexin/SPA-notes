@@ -879,6 +879,46 @@ class BotAI {
         return this.evaluateBoard(clonedGame, botColor);
     }
 
+    // Evaluate piece trade - checks if capturing is worth it considering defenders
+    // Returns positive for good trades (gain material), negative for bad trades where S loses more than A gains
+    evaluatePieceTrade(clonedGame, fromRow, fromCol, destRow, destCol, botColor) {
+        const piece = clonedGame.board.grid[fromRow][fromCol];
+        const targetPiece = clonedGame.board.grid[destRow][destCol];
+        
+        // Not a capture or en passant
+        if (!targetPiece || !piece) return 0;
+        
+        const attackerValue = this.pieceValues[piece.type];
+        const targetValue = this.pieceValues[targetPiece.type];
+        
+        // Count defenders who can recapture the destination square after capture
+        let defenderCount = 0;
+        for (let row = 0; row < 8; row++) {
+            for (let col = 0; col < 8; col++) {
+                const p = clonedGame.board.grid[row][col];
+                // Check if opponent piece can attack this square
+                if (p && p.color !== botColor) { 
+                    if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, destRow, destCol, p.color)) {
+                        defenderCount++;
+                    }
+                }
+            }
+        }
+        
+        // Trade evaluation:
+        // Good trade: attackerValue <= targetValue (gain or equal material)
+        // Bad trade with defenders: attackerValue > targetValue AND defenders > 0
+        if (attackerValue <= targetValue) {
+            return targetValue - attackerValue; // Positive bonus for good material gain
+        } else if (defenderCount === 0) {
+            return targetValue - attackerValue; // Still okay if no defender can recapture
+        }
+        
+        // Bad trade: losing more material with defenders
+        const loss = attackerValue - targetValue;
+        return -loss * (1 + defenderCount); // Heavily penalize losing more material with multiple defenders
+    }
+
     // Evaluate piece safety at a destination square - returns bonus if safe, penalty if unsafe
     evaluatePieceSafety(clonedGame, destRow, destCol, botColor) {
         const opponentColor = botColor === 'white' ? 'black' : 'white';
@@ -982,21 +1022,36 @@ class BotAI {
             const toPos = `${columns[move.to.col]}${rows[move.to.row]}`;
             
             if (!kingInCheck) { 
-                // Check piece safety - don't move to a square where piece will be attacked immediately
+                // Add piece trade evaluation for captures
+                let pieceTradeBonus = 0;
+                const targetPiece = clonedGame.board.grid[move.to.row][move.to.col];
+                if (targetPiece) {
+                    pieceTradeBonus = this.evaluatePieceTrade(clonedGame, move.from.row, move.from.col, move.to.row, move.to.col, botColor);
+                }
+                
+                // Get piece safety for the moved piece
                 const pieceSafety = this.evaluatePieceSafety(clonedGame, move.to.row, move.to.col, botColor);
                 
+                const fromPos = `${columns[move.from.col]}${rows[move.from.row]}`;
+                const toPos = `${columns[move.to.col]}${rows[move.to.row]}`;
+
+                // Include trade bonus - accept if overall score is non-negative OR if this is the only option (edge case)
+                const moveScore = pieceSafety + pieceTradeBonus;
                 if (pieceSafety < 0) {
-                    console.log(`  [UNSAFE] ${fromPos} -> ${toPos}: safety=${pieceSafety}`);
+                    console.log(`  [UNSAFE/LOW_VALUE] ${fromPos} -> ${toPos}: safety=${moveScore.toFixed(0)} trade=${pieceTradeBonus.toFixed(0)}`);
                     // Skip unsafe moves in Easy mode - don't leave pieces hanging
+                } else if (safeMoves.length === allMoves.length - 1 && safeMoves.length === 0) {
+                    // Edge case: keep last move if no other options exist
+                    safeMoves.push(move);
+                    console.log(`  [ACCEPTABLE] ${fromPos} -> ${toPos}: safety+trade=${moveScore.toFixed(0)} (only option)`);
                 } else {
                     safeMoves.push(move);
-                    console.log(`  [SAFE] ${fromPos} -> ${toPos}: safety=${pieceSafety.toFixed(0)}`);
+                    console.log(`  [SAFE/TRADE_ACCEPTABLE] ${fromPos} -> ${toPos}: safety+trade=${moveScore.toFixed(0)}`);
                 }
             } else {
                 console.log(`  [CHECK] ${fromPos} -> ${toPos}`);
             }
         }
-
         const candidates = safeMoves.length > 0 ? safeMoves : allMoves;
         
         if (candidates.length === 0) return null;
@@ -1071,8 +1126,15 @@ class BotAI {
                 // Add piece safety bonus/penalty to the score
                 score = baseScore;
                 const pieceSafety = this.evaluatePieceSafety(clonedGame, move.to.row, move.to.col, botColor);
-                score += pieceSafety;
-
+                
+                // Add piece trade evaluation for captures
+                let pieceTradeBonus = 0;
+                if (clonedGame.board.grid[move.to.row][move.to.col]) {
+                    pieceTradeBonus = this.evaluatePieceTrade(clonedGame, move.from.row, move.from.col, move.to.row, move.to.col, botColor);
+                    console.log(`  [TRADE] ${fromPos} -> ${toPos}: value=${pieceTradeBonus.toFixed(0)}`);
+                }
+                
+                score += pieceSafety + pieceTradeBonus;
                 const reasons = [];
                 
                 // Check for repetition in cloned game's history (we need to simulate it)
@@ -1102,7 +1164,13 @@ class BotAI {
                 console.log(`[BotAI.getMediumMove] ${fromPos} -> ${toPos}: score=${score.toFixed(1)} (${reasons.join(', ')})`);
             } else {
                 // King in check - this move is invalid, give very low score
-                score = -Infinity;
+                const targetPiece = clonedGame.board.grid[move.to.row][move.to.col];
+                let pieceTradeBonus = 0;
+                if (targetPiece) {
+                    pieceTradeBonus = this.evaluatePieceTrade(clonedGame, move.from.row, move.from.col, move.to.row, move.to.col, botColor);
+                }
+                
+                score = -Infinity + pieceTradeBonus; // Still consider trade value for logging
                 console.log(`[BotAI.getMediumMove] ${fromPos} -> ${toPos}: kingInCheck (skipped)`);
             }
 
@@ -1150,13 +1218,22 @@ class BotAI {
             }
             
             if (!kingInCheck) {
+                // Add piece trade evaluation for captures
+                let pieceTradeBonus = 0;
+                const targetPiece = clonedGame.board.grid[move.to.row][move.to.col];
+                if (targetPiece) {
+                    pieceTradeBonus = this.evaluatePieceTrade(clonedGame, move.from.row, move.from.col, move.to.row, move.to.col, botColor);
+                }
+                
                 // Check piece safety - don't move to a square where piece will be attacked immediately
                 const pieceSafety = this.evaluatePieceSafety(clonedGame, move.to.row, move.to.col, botColor);
                 
                 const fromPos = `${columns[move.from.col]}${rows[move.from.row]}`;
                 const toPos = `${columns[move.to.col]}${rows[move.to.row]}`;
                 
-                if (pieceSafety >= 0) {
+                // Include trade bonus in safety check - accept moves with pieceTradeBonus that offset negative safety by at least 2 pawns worth
+            const overallScore = pieceSafety + pieceTradeBonus;
+            if (overallScore >= -200) { // Allow trades where gain outweighs safety loss by at least 2 pawns worth
                     safeMoves.push(move);
                     console.log(`[getHardMove] Safe: ${fromPos} -> ${toPos}: safety=${pieceSafety.toFixed(0)}`);
                 } else {
@@ -1195,8 +1272,7 @@ class BotAI {
             // Add piece safety to Hard mode evaluation
             const pieceSafety = this.evaluatePieceSafety(clonedGame, move.to.row, move.to.col, botColor);
             
-            const score = -oppScore + checkPenalty + pieceSafety;
-
+                const score = -oppScore + checkPenalty + pieceSafety + pieceTradeBonus;
             let repetitionPenalty = 0;
             if (this.isRepetition(clonedGame, move)) { repetitionPenalty = -300; }
 
