@@ -1617,6 +1617,9 @@ function initRenderBoard() {
 
             // Store reference for future updates
             squareMap[coord] = square;
+            
+            // Add aria-label with chess coordinate for MCP accessibility
+            square.setAttribute('aria-label', coord);
 
             // Add click handler directly on button
             square.onclick = () => selectSquare(row, col);
@@ -1634,6 +1637,9 @@ function initRenderBoard() {
                 fileCoord.textContent = columns[col];
                 square.appendChild(fileCoord);
             }
+            
+            // Add aria-label with chess coordinate for MCP accessibility
+            square.setAttribute('aria-label', coord);
 
             const piece = chessGame.board.grid[row][col];
             if (piece) {
@@ -2190,9 +2196,15 @@ function initializeBoardSquares() {
                 square.classList.add('selected');
             }
 
-            if (chessGame.legalMoves.some(m => m.row === row && m.col === col)) {
+        // Update legal move indicators
+            const isLegalMove = chessGame.legalMoves.some(m => m.row === row && m.col === col);
+            if (isLegalMove) {
                 square.classList.add('legal-move');
+            } else {
+                square.classList.remove('legal-move');
             }
+
+            // Update last move indicator
 
             if (chessGame.lastMove) {
                 const from = chessGame.lastMove.from;
@@ -2227,7 +2239,23 @@ function initializeBoardSquares() {
                 square.appendChild(fileCoord);
             }
 
-            const piece = chessGame.board.grid[row][col];
+        const currentPiece = chessGame.board.grid[row][col];
+        const existingPieceSpan = square.querySelector('.piece');
+
+        if (currentPiece && !existingPieceSpan) {
+                // Piece was added to this square
+                const pieceSpan = document.createElement('span');
+                pieceSpan.className = `piece ${currentPiece.color}`;
+                pieceSpan.textContent = PIECES[currentPiece.color][currentPiece.type];
+                square.appendChild(pieceSpan);
+            } else if (!currentPiece && existingPieceSpan) {
+                // Piece was removed from this square
+                existingPieceSpan.remove();
+            } else if (existingPieceSpan && currentPiece) {
+                // Piece type/color changed (e.g., promotion)
+                existingPieceSpan.className = `piece ${currentPiece.color}`;
+                existingPieceSpan.textContent = PIECES[currentPiece.color][currentPiece.type];
+        }
             if (piece) {
                 const pieceSpan = document.createElement('span');
                 pieceSpan.className = `piece ${piece.color}`;

@@ -1,16 +1,20 @@
 # Chess SPA Test Cases
 
 ## Overview
-This document contains quick test steps using Chrome DevTools MCP tools to verify chess.html functionality across different game modes.
+This document contains quick test steps using `chrome-devtools-mcp` tools to verify chess.html functionality across different game modes.
 
 ## **Important notice**
-Use Click from Chrome DevTools MCP to select and move pieces on the chessboard.
+Use `Click("UID")` tool from `chrome-devtools-mcp` to select and move pieces on the chessboard.
 ---
 
 ## Test Scenario 1: Create New Game and Validate Board
 
 ### Prerequisites
-- Open `chess.html` in browser
+- Open `chess.html` in browser by using `navigate_page` tool: `navigate_page({ type: 'url', url: 'file:///c:/Users/xinle/code/SPA-notes/chess.html' })`
+- Wait for board squares to render (board is populated dynamically via JavaScript)
+- Take snapshot of the page by using `take_snapshot` to understand the page layout
+
+**Note:** Each square button now has an `aria-label` attribute with its chess coordinate (e.g., "a8", "e4"), making it easy to identify squares from snapshots.
 
 ### Test Steps
 | Step | Action | Expected Result |
@@ -22,16 +26,41 @@ Use Click from Chrome DevTools MCP to select and move pieces on the chessboard.
 | 5 | Check coordinates | a-h columns and 1-8 rows visible |
 | 6 | Verify status display | Text: "White's turn" |
 
+### Coordinate System Reference
+Each square button in the chess grid has three key identifiers:
+| Identifier | Description |
+|------------|-------------|
+| **UID** | Unique identifier from MCP snapshot (e.g., `uid=19_3`) - used for click actions via `click(uid)` tool |
+| **Coordinate** | Chess notation like "a8", "e4" stored in the button's `aria-label` attribute and `data-chessCoord` data attribute |
+| **Piece** | Optional chess piece character if present on the square |
+
+**Board Structure:**
+- Grid ID: `mcp-board-grid-8x8`
+- 64 squares total (8 rows × 8 columns)
+- Each button has aria-label with coordinate (e.g., `<button aria-label="a8">`)
+
+**Coordinate Mapping:**
+| File/Column | Index | Rank/Row | Index |
+|-------------|-------|----------|-------|
+| a | 0 | 8 | 0 |
+| b | 1 | 7 | 1 |
+| c | 2 | 6 | 2 |
+| d | 3 | 5 | 3 |
+| e | 4 | 4 | 4 |
+| f | 5 | 3 | 5 |
+| g | 6 | 2 | 6 |
+| h | 7 | 1 | 7 |
+
+**Example Coordinates:**
+- a8 (row 0, col 0) - black rook starting position
+- e2 (row 6, col 4) - white pawn starting position  
+- e4 (row 4, col 4) - empty square in middle of board
+
 ### Validation Points
 - Grid has `id="mcp-board-grid-8x8"`
 - White pieces (♔ ♕ ♖ ♗ ♘ ♙) on row 7
 - Black pieces (♚ ♛ ♜ ♝ ♞ ♟) on row 0
 - Pawns on rows 6 and 1
-
-### MCP Test Script
-```javascript
-navigate_page({ type: 'url', url: 'file:///c:/Users/xinle/code/SPA-notes/chess.html' })
-```
 
 ## Test Scenario 2: No Bot Mode (Human vs Human)
 
