@@ -919,6 +919,87 @@ class BotAI {
         return -loss * (1 + defenderCount); // Heavily penalize losing more material with multiple defenders
     }
 
+    // Get list of opponent pieces that threaten any of bot's vulnerable pieces (pieces under attack)
+    getThreateningOpponentPieces(clonedGame, botColor) {
+        const threateningPieces = [];
+        const opponentColor = botColor === 'white' ? 'black' : 'white';
+        
+        for (let row = 0; row < 8; row++) {
+            for (let col = 0; col < 8; col++) {
+                const piece = clonedGame.board.grid[row][col];
+                // Check if this is a bot's piece under attack
+                if (piece && piece.color === botColor) {
+                    // Use GameState's isSquareUnderAttack to check if this square would be attacked
+                    if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, row, col, opponentColor)) {
+                        console.log(`    [THREAT] Bot ${piece.type} at (${row},${col}) is under attack`);
+                        
+                        // Find all pieces that can attack this square by checking each opponent piece's pseudo moves
+                        for (let r = 0; r < 8; r++) {
+                            for (let c = 0; c < 8; c++) {
+                                const attacker = clonedGame.board.grid[r][c];
+                                if (attacker && attacker.color === opponentColor) {
+                                    // Use GameState's isSquareUnderAttack to check if this attacker can reach the square
+                                    if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, row, col, attacker.color)) {
+                                        threateningPieces.push({
+                                            from: {row: r, col: c},
+                                            to: {row: row, col: col},
+                                            piece: attacker,
+                                            threatValue: this.pieceValues[piece.type]
+                                        });
+                                        console.log(`      [THREAT] Found ${attacker.type} at (${r},${c}) threatening bot's ${piece.type}`);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        return threateningPieces;
+    }
+
+    // Evaluate move that protects a vulnerable piece
+    evaluateMoveProtectsVulnerablePiece(clonedGame, fromRow, fromCol, destRow, destCol, botColor) {
+        const opponentColor = botColor === 'white' ? 'black' : 'white';
+        
+        // Get pieces threatening bot's vulnerable pieces
+        const threats = this.getThreateningOpponentPieces(clonedGame, botColor);
+        
+        if (threats.length === 0) return 0;
+        
+        let protectionBonus = 0;
+        
+        for (const threat of threats) {
+            // Check if moving to destRow/destCol attacks the threatening piece
+            const pseudoMoves = this.getPseudoLegalMovesForPiece(clonedGame.board, clonedGame.gameState, fromRow, fromCol);
+            
+            for (const move of pseudoMoves) {
+                if (move.row === threat.from.row && move.col === threat.from.col) {
+                    // This move would attack the threatening piece
+                    const protectionValue = this.pieceValues[threat.piece.type];
+                    
+                    // Only bonus if protecting more valuable piece than attacking
+                    if (protectionValue > this.pieceValues['p']) { // At least pawn value
+                        protectionBonus += protectionValue * 0.5; // Give half the threat value as protection bonus
+                        
+                        console.log(`    [PROTECT] Moving to attack ${threat.piece.type.toUpperCase()} at (${threat.from.row},${threat.from.col}) - protecting piece worth ${protectionValue}`);
+                    }
+                }
+            }
+        }
+        
+        return protectionBonus;
+    }
+
+    getPseudoLegalMovesForPiece(board, gameState, row, col) {
+        const piece = board.getPiece(row, col);
+        if (!piece || !gameState) return [];
+        // Create a minimal GameState for pseudo moves
+        const tempGameState = new GameState(board);
+        return piece.getPseudoLegalMoves(board, tempGameState, row, col);
+    }
+
     // Evaluate piece safety at a destination square - returns bonus if safe, penalty if unsafe
     evaluatePieceSafety(clonedGame, destRow, destCol, botColor) {
         const opponentColor = botColor === 'white' ? 'black' : 'white';
@@ -1005,6 +1086,11 @@ class BotAI {
             // Clone game state safely for testing this move
             const clonedGame = this.cloneGameForEvaluation(game);
             
+            // LOG: Before making the test move - capture original piece info for trade evaluation
+            const fromPosLogRandom = `${columns[move.from.col]}${rows[move.from.row]}`;
+            const toPosLogRandom = `${columns[move.to.col]}${rows[move.to.row]}`;
+            const originalTargetPieceRandom = clonedGame.board.grid[move.to.row][move.to.col];
+            
             // Make the test move on the clone
             this.makeMoveOnClonedGame(clonedGame, move.from, move.to);
             
@@ -1023,38 +1109,91 @@ class BotAI {
             
             if (!kingInCheck) { 
                 // Add piece trade evaluation for captures
-                let pieceTradeBonus = 0;
-                const targetPiece = clonedGame.board.grid[move.to.row][move.to.col];
-                if (targetPiece) {
-                    pieceTradeBonus = this.evaluatePieceTrade(clonedGame, move.from.row, move.from.col, move.to.row, move.to.col, botColor);
+                
+                const protectionBonus = this.evaluateMoveProtectsVulnerablePiece(clonedGame, move.from.row, move.from.col, move.to.row, move.to.col, botColor);
+                if (protectionBonus > 0) {
+                    console.log(`    [PROTECTION] ${fromPos} -> ${toPos}: bonus=${protectionBonus.toFixed(0)}`);
+                }
+                // Calculate trade bonus directly using original target piece info
+                let pieceTradeBonusRandom = 0;
+                if (originalTargetPieceRandom) {
+                    const attackerValue = this.pieceValues[clonedGame.board.grid[move.from.row][move.from.col]?.type || 'p'];
+                    const targetValue = this.pieceValues[originalTargetPieceRandom.type];
+                    const isGoodTrade = attackerValue <= targetValue;
+                    
+                    // Count defenders who can recapture the destination square
+                    let defenderCount = 0;
+                    for (let row = 0; row < 8; row++) {
+                        for (let col = 0; col < 8; col++) {
+                            const p = clonedGame.board.grid[row][col];
+                            if (p && p.color !== botColor) { 
+                                if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, move.to.row, move.to.col, p.color)) {
+                                    defenderCount++;
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Calculate trade bonus
+                    if (isGoodTrade || defenderCount === 0) {
+                        pieceTradeBonusRandom = targetValue - attackerValue;
+                    } else {
+                        const loss = attackerValue - targetValue;
+                        pieceTradeBonusRandom = -loss * (1 + defenderCount);
+                    }
+                    
+                    console.log(`    [TRADE] ${fromPosLogRandom} -> ${toPosLogRandom}: captured ${originalTargetPieceRandom.type}, defenders=${defenderCount}, value=${pieceTradeBonusRandom.toFixed(0)}`);
+                } else {
+                    console.log(`    [TRADE] ${fromPosLogRandom} -> ${toPosLogRandom}: no capture`);
                 }
                 
                 // Get piece safety for the moved piece
                 const pieceSafety = this.evaluatePieceSafety(clonedGame, move.to.row, move.to.col, botColor);
                 
-                const fromPos = `${columns[move.from.col]}${rows[move.from.row]}`;
-                const toPos = `${columns[move.to.col]}${rows[move.to.row]}`;
+                const fromPosRandom = `${columns[move.from.col]}${rows[move.from.row]}`;
+                const toPosRandom = `${columns[move.to.col]}${rows[move.to.row]}`;
 
-                // Include trade bonus - accept if overall score is non-negative OR if this is the only option (edge case)
-                const moveScore = pieceSafety + pieceTradeBonus;
-                if (pieceSafety < 0) {
-                    console.log(`  [UNSAFE/LOW_VALUE] ${fromPos} -> ${toPos}: safety=${moveScore.toFixed(0)} trade=${pieceTradeBonus.toFixed(0)}`);
-                    // Skip unsafe moves in Easy mode - don't leave pieces hanging
-                } else if (safeMoves.length === allMoves.length - 1 && safeMoves.length === 0) {
-                    // Edge case: keep last move if no other options exist
+                // Include trade bonus in overall score
+                const moveScore = pieceSafety + pieceTradeBonusRandom;
+                
+                // Accept move if: safe OR has any trade gain (not just negative)
+                const isValidMove = pieceSafety >= 0; // Safe square
+                const isGainTrade = pieceTradeBonusRandom > 0; // Positive material gain
+                
+                if (!isValidMove && !isGainTrade) {
+                    console.log(`  [UNSAFE/NO_GAIN] ${fromPosRandom} -> ${toPosRandom}: safety=${pieceSafety.toFixed(0)} trade=${pieceTradeBonusRandom.toFixed(0)} (skipped - no material gain to offset loss)`);
+                } else if (isValidMove && isGainTrade) {
+                    // Safe and has gain
+                    console.log(`  [SAFE/GAIN] ${fromPosRandom} -> ${toPosRandom}: safety=${pieceSafety.toFixed(0)} trade=${pieceTradeBonusRandom.toFixed(0)}`);
                     safeMoves.push(move);
-                    console.log(`  [ACCEPTABLE] ${fromPos} -> ${toPos}: safety+trade=${moveScore.toFixed(0)} (only option)`);
+                } else if (isValidMove) {
+                    // Just safe (no capture)
+                    console.log(`  [SAFE/NO_CAPTURE] ${fromPosRandom} -> ${toPosRandom}: safety=${pieceSafety.toFixed(0)}`);
+                    safeMoves.push(move);
                 } else {
+                    // Unsafe but has gain - accept it anyway for Easy mode
+                    const actualScore = pieceSafety + pieceTradeBonusRandom;
+                    console.log(`  [UNSAFE/GAIN] ${fromPosRandom} -> ${toPosRandom}: safety=${pieceSafety.toFixed(0)} trade=${pieceTradeBonusRandom.toFixed(0)}`);
                     safeMoves.push(move);
-                    console.log(`  [SAFE/TRADE_ACCEPTABLE] ${fromPos} -> ${toPos}: safety+trade=${moveScore.toFixed(0)}`);
                 }
             } else {
                 console.log(`  [CHECK] ${fromPos} -> ${toPos}`);
             }
         }
+        
+        // Edge case: If no moves passed our filter but we have legal moves, add all to candidates
+        if (safeMoves.length === 0 && allMoves.length > 0) {
+            console.warn(`[getRandomMove] No valid moves found after filtering - using ALL ${allMoves.length} legal moves as fallback`);
+            safeMoves.push(...allMoves);
+        }
+        // Fallback: If no valid moves found, use ALL legal moves as fallback to prevent bot from getting stuck
         const candidates = safeMoves.length > 0 ? safeMoves : allMoves;
         
-        if (candidates.length === 0) return null;
+        console.log(`[getRandomMove] Candidates after filtering: ${candidates.length}/${allMoves.length}`);
+        if (candidates.length === 0) {
+            console.warn('[getRandomMove] WARNING: No candidate moves found! This should not happen.');
+            return null;
+        }
         
         const selected = candidates[Math.floor(Math.random() * candidates.length)];
         console.log(`[BotAI.getRandomMove] Selected: ${columns[selected.from.col]}${rows[selected.from.row]} -> ${columns[selected.to.col]}${rows[selected.to.row]}`);
@@ -1104,6 +1243,11 @@ class BotAI {
             // Clone game state safely for testing this move
             const clonedGame = this.cloneGameForEvaluation(game);
             
+            // LOG: Before making the test move - capture original piece info for trade evaluation
+            const fromPosLog = `(${move.from.row},${move.from.col})`;
+            const toPosLog = `(${move.to.row},${move.to.col})`;
+            const originalTargetPiece = clonedGame.board.grid[move.to.row][move.to.col];
+            
             // Make the test move on the clone
             this.makeMoveOnClonedGame(clonedGame, move.from, move.to);
             
@@ -1115,10 +1259,10 @@ class BotAI {
             }
 
             // Initialize score first (needed for both paths)
+            let score;
             const fromPos = `(${move.from.row},${move.from.col})`;
             const toPos = `(${move.to.row},${move.to.col})`;
             
-            let score;
             if (!kingInCheck) {
                 // Evaluate the board state after this move
                 const baseScore = this.evaluateBoard(clonedGame, botColor);
@@ -1129,12 +1273,46 @@ class BotAI {
                 
                 // Add piece trade evaluation for captures
                 let pieceTradeBonus = 0;
-                if (clonedGame.board.grid[move.to.row][move.to.col]) {
-                    pieceTradeBonus = this.evaluatePieceTrade(clonedGame, move.from.row, move.from.col, move.to.row, move.to.col, botColor);
-                    console.log(`  [TRADE] ${fromPos} -> ${toPos}: value=${pieceTradeBonus.toFixed(0)}`);
+                if (originalTargetPiece) {
+                    const attackerValue = this.pieceValues[clonedGame.board.grid[move.from.row][move.from.col]?.type || 'p'];
+                    const targetValue = this.pieceValues[originalTargetPiece.type];
+                    const isGoodTrade = attackerValue <= targetValue;
+                    
+                    // Count defenders who can recapture the destination square
+                    let defenderCount = 0;
+                    for (let row = 0; row < 8; row++) {
+                        for (let col = 0; col < 8; col++) {
+                            const p = clonedGame.board.grid[row][col];
+                            if (p && p.color !== botColor) { 
+                                if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, move.to.row, move.to.col, p.color)) {
+                                    defenderCount++;
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Calculate trade bonus
+                    if (isGoodTrade || defenderCount === 0) {
+                        pieceTradeBonus = targetValue - attackerValue;
+                    } else {
+                        const loss = attackerValue - targetValue;
+                        pieceTradeBonus = -loss * (1 + defenderCount);
+                    }
+                    
+                    console.log(`  [TRADE] ${fromPosLog} -> ${toPosLog}: captured ${originalTargetPiece.type}, defenders=${defenderCount}, value=${pieceTradeBonus.toFixed(0)}`);
+                } else {
+                    console.log(`  [TRADE] ${fromPosLog} -> ${toPosLog}: no capture`);
                 }
                 
+                
                 score += pieceSafety + pieceTradeBonus;
+                
+                // Add protection bonus for moves that attack threatening pieces
+                const protectionBonus = this.evaluateMoveProtectsVulnerablePiece(clonedGame, move.from.row, move.from.col, move.to.row, move.to.col, botColor);
+                if (protectionBonus > 0) {
+                    score += protectionBonus;
+                    console.log(`    [PROTECTION] ${fromPos} -> ${toPos}: bonus=${protectionBonus.toFixed(0)}`);
+                }
                 const reasons = [];
                 
                 // Check for repetition in cloned game's history (we need to simulate it)
@@ -1164,14 +1342,40 @@ class BotAI {
                 console.log(`[BotAI.getMediumMove] ${fromPos} -> ${toPos}: score=${score.toFixed(1)} (${reasons.join(', ')})`);
             } else {
                 // King in check - this move is invalid, give very low score
-                const targetPiece = clonedGame.board.grid[move.to.row][move.to.col];
-                let pieceTradeBonus = 0;
-                if (targetPiece) {
-                    pieceTradeBonus = this.evaluatePieceTrade(clonedGame, move.from.row, move.from.col, move.to.row, move.to.col, botColor);
+                let pieceTradeBonusKingCheck = 0;
+                if (originalTargetPiece) {
+                    const attackerValue = this.pieceValues[clonedGame.board.grid[move.from.row][move.from.col]?.type || 'p'];
+                    const targetValue = this.pieceValues[originalTargetPiece.type];
+                    const isGoodTrade = attackerValue <= targetValue;
+                    
+                    // Count defenders who can recapture the destination square
+                    let defenderCount = 0;
+                    for (let row = 0; row < 8; row++) {
+                        for (let col = 0; col < 8; col++) {
+                            const p = clonedGame.board.grid[row][col];
+                            if (p && p.color !== botColor) { 
+                                if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, move.to.row, move.to.col, p.color)) {
+                                    defenderCount++;
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Calculate trade bonus
+                    if (isGoodTrade || defenderCount === 0) {
+                        pieceTradeBonusKingCheck = targetValue - attackerValue;
+                    } else {
+                        const loss = attackerValue - targetValue;
+                        pieceTradeBonusKingCheck = -loss * (1 + defenderCount);
+                    }
+                    
+                    console.log(`    [TRADE] ${fromPosLog} -> ${toPosLog}: captured ${originalTargetPiece.type}, defenders=${defenderCount}, value=${pieceTradeBonusKingCheck.toFixed(0)}`);
+                } else {
+                    console.log(`    [TRADE] ${fromPosLog} -> ${toPosLog}: no capture`);
                 }
                 
-                score = -Infinity + pieceTradeBonus; // Still consider trade value for logging
-                console.log(`[BotAI.getMediumMove] ${fromPos} -> ${toPos}: kingInCheck (skipped)`);
+                score = -Infinity + pieceTradeBonusKingCheck; // Still consider trade value for logging
+                console.log(`[BotAI.getMediumMove] ${fromPosLog} -> ${toPosLog}: kingInCheck (skipped)`);
             }
 
             if (score > bestScore) { 
@@ -1206,6 +1410,11 @@ class BotAI {
             // Clone game state safely
             const clonedGame = this.cloneGameForEvaluation(game);
             
+            // LOG: Before making the test move - capture original piece info for trade evaluation
+            const fromPosLogHard = `(${move.from.row},${move.from.col})`;
+            const toPosLogHard = `(${move.to.row},${move.to.col})`;
+            const originalTargetPieceHard = clonedGame.board.grid[move.to.row][move.to.col];
+            
             // Make the test move on clone
             this.makeMoveOnClonedGame(clonedGame, move.from, move.to);
             
@@ -1219,25 +1428,61 @@ class BotAI {
             
             if (!kingInCheck) {
                 // Add piece trade evaluation for captures
+                
+                const fromPos = `${columns[move.from.col]}${rows[move.from.row]}`;
+                const toPos = `${columns[move.to.col]}${rows[move.to.row]}`;
+                
+                const protectionBonus = this.evaluateMoveProtectsVulnerablePiece(clonedGame, move.from.row, move.from.col, move.to.row, move.to.col, botColor);
+                if (protectionBonus > 0) {
+                    console.log(`    [PROTECTION] ${fromPos} -> ${toPos}: bonus=${protectionBonus.toFixed(0)}`);
+                }
+                
+                // Calculate piece trade bonus directly using original target piece info
                 let pieceTradeBonus = 0;
-                const targetPiece = clonedGame.board.grid[move.to.row][move.to.col];
-                if (targetPiece) {
-                    pieceTradeBonus = this.evaluatePieceTrade(clonedGame, move.from.row, move.from.col, move.to.row, move.to.col, botColor);
+                if (originalTargetPieceHard) {
+                    const attackerValue = this.pieceValues[clonedGame.board.grid[move.from.row][move.from.col]?.type || 'p'];
+                    const targetValue = this.pieceValues[originalTargetPieceHard.type];
+                    const isGoodTrade = attackerValue <= targetValue;
+                    
+                    // Count defenders who can recapture the destination square
+                    let defenderCount = 0;
+                    for (let row = 0; row < 8; row++) {
+                        for (let col = 0; col < 8; col++) {
+                            const p = clonedGame.board.grid[row][col];
+                            if (p && p.color !== botColor) { 
+                                if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, move.to.row, move.to.col, p.color)) {
+                                    defenderCount++;
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Calculate trade bonus
+                    if (isGoodTrade || defenderCount === 0) {
+                        pieceTradeBonus = targetValue - attackerValue;
+                    } else {
+                        const loss = attackerValue - targetValue;
+                        pieceTradeBonus = -loss * (1 + defenderCount);
+                    }
+                    
+                    console.log(`    [TRADE] ${fromPosLogHard} -> ${toPosLogHard}: captured ${originalTargetPieceHard.type}, defenders=${defenderCount}, value=${pieceTradeBonus.toFixed(0)}`);
+                } else {
+                    console.log(`    [TRADE] ${fromPosLogHard} -> ${toPosLogHard}: no capture`);
                 }
                 
                 // Check piece safety - don't move to a square where piece will be attacked immediately
                 const pieceSafety = this.evaluatePieceSafety(clonedGame, move.to.row, move.to.col, botColor);
                 
-                const fromPos = `${columns[move.from.col]}${rows[move.from.row]}`;
-                const toPos = `${columns[move.to.col]}${rows[move.to.row]}`;
+                const fromPosLog = `${columns[move.from.col]}${rows[move.from.row]}`;
+                const toPosLog = `${columns[move.to.col]}${rows[move.to.row]}`;
                 
                 // Include trade bonus in safety check - accept moves with pieceTradeBonus that offset negative safety by at least 2 pawns worth
             const overallScore = pieceSafety + pieceTradeBonus;
             if (overallScore >= -200) { // Allow trades where gain outweighs safety loss by at least 2 pawns worth
                     safeMoves.push(move);
-                    console.log(`[getHardMove] Safe: ${fromPos} -> ${toPos}: safety=${pieceSafety.toFixed(0)}`);
+                    console.log(`[getHardMove] Safe: ${fromPosLog} -> ${toPosLog}: safety=${pieceSafety.toFixed(0)} trade=${pieceTradeBonus.toFixed(0)}`);
                 } else {
-                    console.log(`[getHardMove] Unsafe (skipped): ${fromPos} -> ${toPos}: safety=${pieceSafety.toFixed(0)}`);
+                    console.log(`[getHardMove] Unsafe (skipped): ${fromPosLog} -> ${toPosLog}: safety=${pieceSafety.toFixed(0)} trade=${pieceTradeBonus.toFixed(0)}`);
                 }
             }
         }
@@ -1269,10 +1514,49 @@ class BotAI {
                 checkPenalty = -500;
             }
             
-            // Add piece safety to Hard mode evaluation
+            // Add piece safety and protection bonus to Hard mode evaluation
+            const fromPos = `${columns[move.from.col]}${rows[move.from.row]}`;
+            const toPos = `${columns[move.to.col]}${rows[move.to.row]}`;
+            
+            const protectionBonus = this.evaluateMoveProtectsVulnerablePiece(clonedGame, move.from.row, move.from.col, move.to.row, move.to.col, botColor);
+                
+            if (protectionBonus > 0) {
+                console.log(`    [PROTECTION] ${fromPos} -> ${toPos}: bonus=${protectionBonus.toFixed(0)}`);
+            }
+                
             const pieceSafety = this.evaluatePieceSafety(clonedGame, move.to.row, move.to.col, botColor);
             
-                const score = -oppScore + checkPenalty + pieceSafety + pieceTradeBonus;
+            // Calculate piece trade bonus for Hard mode evaluation
+            let pieceTradeBonusHard = 0;
+            const targetPieceAtDestination = clonedGame.board.grid[move.to.row][move.to.col];
+            if (targetPieceAtDestination) {
+                const attackerValue = this.pieceValues[clonedGame.board.grid[move.from.row][move.from.col]?.type || 'p'];
+                const targetValue = this.pieceValues[targetPieceAtDestination.type];
+                const isGoodTrade = attackerValue <= targetValue;
+                
+                // Count defenders who can recapture the destination square
+                let defenderCountHard = 0;
+                for (let row = 0; row < 8; row++) {
+                    for (let col = 0; col < 8; col++) {
+                        const p = clonedGame.board.grid[row][col];
+                        if (p && p.color !== botColor) { 
+                            if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, move.to.row, move.to.col, p.color)) {
+                                defenderCountHard++;
+                            }
+                        }
+                    }
+                }
+                
+                // Calculate trade bonus
+                if (isGoodTrade || defenderCountHard === 0) {
+                    pieceTradeBonusHard = targetValue - attackerValue;
+                } else {
+                    const loss = attackerValue - targetValue;
+                    pieceTradeBonusHard = -loss * (1 + defenderCountHard);
+                }
+            }
+            
+            const score = -oppScore + checkPenalty + pieceSafety + pieceTradeBonusHard + protectionBonus;
             let repetitionPenalty = 0;
             if (this.isRepetition(clonedGame, move)) { repetitionPenalty = -300; }
 
@@ -1407,9 +1691,9 @@ class BotAI {
             bestMove = allMoves[0];
         }
 
-        const fromPos = `${columns[bestMove.from.col]}${rows[bestMove.from.row]}`;
-        const toPos = `${columns[bestMove.to.col]}${rows[bestMove.to.row]}`;
-        console.log(`[BotAI.makeMove] SELECTED: ${fromPos} -> ${toPos}\n`);
+        const fromPosBest = `${columns[bestMove.from.col]}${rows[bestMove.from.row]}`;
+        const toPosBest = `${columns[bestMove.to.col]}${rows[bestMove.to.row]}`;
+        console.log(`[BotAI.makeMove] SELECTED: ${fromPosBest} -> ${toPosBest}\n`);
 
         return { type: 'move', from: bestMove.from, to: bestMove.to };
     }
@@ -1572,10 +1856,17 @@ class ChessGame {
 
         if (!this.botAI) { startTimer(); }
 
-        if (botDifficulty !== 'none' && this.gameState.currentTurn === 'black' && this.gameActive) {
+        // Read current dropdown value at move time to handle difficulty changes during game
+        const currentBotDiffSelect = document.getElementById('mcp-bot-difficulty-select');
+        const currentDifficulty = initialBotDifficulties[currentBotDiffSelect?.value] || 'medium';
+        
+        if (currentDifficulty !== 'none' && this.gameState.currentTurn === 'black' && this.gameActive) {
+            // Create a new BotAI instance with the current difficulty to ensure it uses updated settings
+            const bot = new BotAI(currentDifficulty);
+            
             const self = this;
             setTimeout(() => {
-                const result = self.botAI.makeMove(self);
+                const result = bot.makeMove(self);
                 console.log('[ChessGame.executeMove] Bot result:', result);
 
                 if (result.type === 'checkmate') { this.gameActive = false; updateStatus(); }
@@ -1962,8 +2253,12 @@ function updateStatus() {
 
     const checkStatus = chessGame.gameState.isCheck(chessGame.gameState.currentTurn) ? ' (CHECK!)' : '';
 
-    if (botDifficulty !== 'none' && chessGame.gameState.currentTurn === 'black' && chessGame.gameActive) {
-        gameStatusElement.textContent = `Bot (${botDifficulty.charAt(0).toUpperCase() + botDifficulty.slice(1)}) is thinking...`;
+        // Read current dropdown value at move time to handle difficulty changes during game
+        const currentBotDiffSelect = document.getElementById('mcp-bot-difficulty-select');
+        const currentDifficulty = initialBotDifficulties[currentBotDiffSelect?.value] || 'medium';
+        
+        if (currentDifficulty !== 'none' && chessGame.gameState.currentTurn === 'black' && chessGame.gameActive) {
+            gameStatusElement.textContent = `Bot (${currentDifficulty.charAt(0).toUpperCase() + currentDifficulty.slice(1)}) is thinking...`;
         gameStatusElement.style.backgroundColor = '#e67e22';
     } else {
         const turnName = chessGame.gameState.currentTurn.charAt(0).toUpperCase() +
