@@ -7,10 +7,47 @@ This document contains quick test steps using `chrome-devtools-mcp` tools to ver
 Use `Click("UID")` tool from `chrome-devtools-mcp` to select and move pieces on the chessboard.
 ---
 
+## Prerequisites: Starting HTTP Server
+
+### Why HTTP Server is Required
+Modern browsers block loading JavaScript files via `<script src="...">` from local HTML files due to CORS (Cross-Origin Resource Sharing) security restrictions. To properly test the modularized version of chess.html, you need to run a simple HTTP server.
+
+### How to Start the HTTP Server
+
+**Option 1: Using PowerShell Script**
+```powershell
+# Run this command in PowerShell
+.\start-server.ps1
+```
+This will:
+- Start a Python HTTP server on port 8000
+- Automatically open your browser to `http://localhost:8000/chess.html`
+
+**Option 2: Manual Command Line**
+```cmd
+cd C:\Users\xinle\code\SPA-notes
+python -m http.server 8000
+```
+Then manually navigate to `http://localhost:8000/chess.html` in your browser.
+
+### Testing with chrome-devtools-mcp
+
+After starting the HTTP server, use `navigate_page` tool to access the chess game:
+
+```javascript
+// Navigate to the chess page via HTTP
+navigate_page({ type: 'url', url: 'http://localhost:8000/chess.html' })
+```
+
+**Note:** Wait for the board squares to render (board is populated dynamically via JavaScript). Take a snapshot using `take_snapshot` to understand the page layout.
+
+---
+
 ## Test Scenario 1: Create New Game and Validate Board
 
 ### Prerequisites
-- Open `chess.html` in browser by using `navigate_page` tool: `navigate_page({ type: 'url', url: 'file:///c:/Users/xinle/code/SPA-notes/chess.html' })`
+- Start HTTP server using `start-server.ps1`
+- Navigate to chess game: `navigate_page({ type: 'url', url: 'http://localhost:8000/chess.html' })`
 - Wait for board squares to render (board is populated dynamically via JavaScript)
 - Take snapshot of the page by using `take_snapshot` to understand the page layout
 
@@ -19,7 +56,7 @@ Use `Click("UID")` tool from `chrome-devtools-mcp` to select and move pieces on 
 ### Test Steps
 | Step | Action | Expected Result |
 |------|--------|-----------------|
-| 1 | Navigate to file://.../chess.html | Page loads with chess board |
+| 1 | Navigate to http://localhost:8000/chess.html | Page loads with chess board |
 | 2 | Take snapshot | Verify board grid ID: `mcp-board-grid-8x8` |
 | 3 | Check board structure | 8x8 grid of squares (64 total) |
 | 4 | Verify pieces | All starting positions correct (white on row 7, black on row 0) |
