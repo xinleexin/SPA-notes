@@ -437,6 +437,7 @@ class ChessGame {
         this.currentTurnTime = null;
         this.currentTime = { white: 0, black: 0 };
         this.timerInterval = null;
+        this.botDifficulty = 'medium';
     }
 
     async init(botDifficulty) {
@@ -444,6 +445,7 @@ class ChessGame {
         try {
             await this.createNewGame();
             this.botAI = new BotAI(botDifficulty);
+            this.botDifficulty = botDifficulty;
             console.log('[ChessGame.init] Completed');
         } catch (e) { console.error('[ChessGame.init] Error:', e); }
     }
@@ -495,6 +497,122 @@ class ChessGame {
         } catch (e) { console.error('[ChessGame.resetToStartingPosition] Error:', e); }
     }
 
+    async undoLastMove() {
+        console.log('[ChessGame.undoLastMove] Starting...');
+        
+        if (this.moveHistory.length === 0) return;
+        
+        // For bot games, check if we have at least 2 moves to undo
+        const isBotGame = this.botAI !== null && this.botDifficulty !== 'none';
+        const minMovesNeeded = isBotGame ? 2 : 1;
+        
+        if (this.moveHistory.length < minMovesNeeded) {
+            console.log('[ChessGame.undoLastMove] Not enough moves to undo');
+            return;
+        }
+        
+        // Undo the last move(s)
+        let undoneCount = 0;
+        while (undoneCount < minMovesNeeded && this.moveHistory.length > 0) {
+            const lastMove = this.moveHistory.pop();
+            const piece = lastMove.piece;
+            const targetPiece = lastMove.captured || null;
+            
+            // Check for castling - disable undo if any castling occurred
+            const movedToCastling = lastMove.to.isCastling === 'kingside' || lastMove.to.isCastling === 'queenside';
+            
+            if (piece.type === 'k' || piece.type === 'r' || movedToCastling) {
+                console.log('[ChessGame.undoLastMove] Castling detected - cannot undo, restoring move');
+                this.moveHistory.push(lastMove);  // Restore the move
+                return;  // Don't allow castling to be undone
+            }
+            
+            // Move piece back to source square
+            this.board.grid[lastMove.from.row][lastMove.from.col] = piece;
+            this.board.grid[lastMove.to.row][lastMove.to.col] = targetPiece;
+            
+            // Handle en passant - restore captured pawn
+            if (lastMove.to.isEnPassant) {
+                const capturedPawnRow = lastMove.color === 'white' ? lastMove.to.row + 1 : lastMove.to.row - 1;
+                this.board.grid[capturedPawnRow][lastMove.to.col] = new Pawn(lastMove.color === 'white' ? 'black' : 'white');
+            }
+            
+            // Restore castling rights for the moved piece
+            if (piece.type === 'r') {
+                const colorKey = piece.color === 'white' ? 
+                    (lastMove.from.row === 7 && lastMove.from.col === 0 ? 'whiteRookQueenSideMoved' : 'whiteRookKingSideMoved') :
+                    (lastMove.from.row === 0 && lastMove.from.col === 0 ? 'blackRookQueenSideMoved' : 'blackRookKingSideMoved');
+                this.gameState.castlingRights[colorKey] = false;
+            }
+            
+            // Restore king position
+            if (piece.type === 'k') {
+                const colorKey = piece.color === 'white' ? 'whiteKingPos' : 'blackKingPos';
+                this.gameState.whiteKingPos = { row: 7, col: 4 };
+                this.gameState.blackKingPos = { row: 0, col: 4 };
+            }
+            
+            // Restore enPassantTarget
+            if (lastMove.to.isDoublePawn) {
+                this.gameState.enPassantTarget = { 
+                    row: Math.floor((lastMove.from.row + lastMove.to.row) / 2), 
+                    col: lastMove.from.col 
+                };
+            } else {
+                this.gameState.enPassantTarget = null;
+            }
+            
+            // Switch turn back
+            this.gameState.switchTurn();
+            undoneCount++;
+        }
+        
+        this.lastMove = null;
+        this.gameActive = true;
+        
+        await autoSave();
+        renderBoard();
+        renderMoveHistory();  // Update move history display
+    }
+
+    canUndo() {
+        // For bot games, disable Take Back while bot is thinking
+        if (this.botAI !== null && this.botDifficulty !== 'none') {
+            const currentTurn = this.gameState.currentTurn;
+            if (currentTurn === 'black') { 
+                console.log('[ChessGame.canUndo] Bot is thinking - disabled');
+                return false; 
+            }
+        }
+        
+        console.log('[ChessGame.canUndo] Checking...');
+        console.log('  moveHistory.length:', this.moveHistory.length);
+        
+        if (this.moveHistory.length === 0) { 
+            console.log('  NO: no moves'); return false; 
+        }
+        
+        const lastMove = this.moveHistory[this.moveHistory.length - 1];
+        console.log('  lastMove.piece.type:', lastMove.piece.type, 'isCastling:', lastMove.to.isCastling);
+        
+        // Check for castling or rook/knight moves that affect rights
+        if (lastMove.piece.type === 'k' || lastMove.piece.type === 'r') { 
+            console.log('  NO: king/rook moved'); return false; 
+        }
+        if (lastMove.to.isCastling === 'kingside' || lastMove.to.isCastling === 'queenside') { 
+            console.log('  NO: castling move'); return false; 
+        }
+        
+        // For bot games, check if we have at least 2 moves to undo
+        const isBotGame = this.botAI !== null && this.botDifficulty !== 'none';
+        console.log('  isBotGame:', isBotGame);
+        if (isBotGame && this.moveHistory.length < 2) { 
+            console.log('  NO: bot game but not enough moves'); return false; 
+        }
+        
+        console.log('  YES: can undo');
+        return true;
+    }
     async executeMove(from, to) {
         const piece = this.board.grid[from.row][from.col];
         const targetPiece = this.board.grid[to.row][to.col];

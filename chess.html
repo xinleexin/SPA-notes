@@ -251,7 +251,7 @@
                 <button class="btn btn-primary" id="mcp-btn-new-game">New Game</button>
                 <button class="btn btn-secondary" id="mcp-btn-save-game">Save Game</button>
                 <button class="btn btn-secondary" id="mcp-btn-load-game">Load Game</button>
-                <button class="btn btn-danger" id="mcp-btn-reset-position">Reset Position</button>
+                <button class="btn btn-danger" id="mcp-btn-reset-position" disabled>Take Back</button>
             </div>
 
             <div id="mcp-bot-settings-panel" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #bdc3c7;">
@@ -558,6 +558,17 @@ function getPieces(color) {
 const chessBoardElement = document.getElementById('mcp-board-grid-8x8');
 const gameStatusElement = document.getElementById('mcp-status-display');
 
+function updateTakeBackButton() {
+    const btn = document.getElementById('mcp-btn-reset-position');
+    if (chessGame && chessGame.canUndo()) {
+        btn.disabled = false;
+        btn.textContent = 'Take Back';
+    } else {
+        btn.disabled = true;
+        btn.textContent = 'No Move to Undo';
+    }
+}
+
 function renderMoveHistory() {
     const moveHistoryList = document.getElementById('mcp-move-history-list');
     moveHistoryList.innerHTML = '';
@@ -591,6 +602,9 @@ function renderMoveHistory() {
     }
 
     moveHistoryList.scrollTop = moveHistoryList.scrollHeight;
+    
+    // Update Take Back button state after rendering history
+    updateTakeBackButton();
 }
 
 function updateStatus() {
@@ -834,6 +848,17 @@ function loadFromLocalStorage() {
     }
 }
 
+function updateTakeBackButton() {
+    const btn = document.getElementById('mcp-btn-reset-position');
+    if (chessGame && chessGame.canUndo()) {
+        btn.disabled = false;
+        btn.textContent = 'Take Back';
+    } else {
+        btn.disabled = true;
+        btn.textContent = 'No Move to Undo';
+    }
+}
+
 function loadFromSaved(savedData) {
     const state = JSON.parse(savedData);
 
@@ -858,6 +883,8 @@ function loadFromSaved(savedData) {
     chessGame.currentTurnTime = null;
 
     stopTimer();
+    
+    updateTakeBackButton();
 }
 
 function getGameState() {
@@ -905,18 +932,10 @@ function setupEventListeners() {
     document.getElementById('mcp-btn-save-game').addEventListener('click', saveGame);
     document.getElementById('mcp-btn-load-game').addEventListener('click', loadGame);
 
+    // Take Back button - undo last move(s)
     document.getElementById('mcp-btn-reset-position').addEventListener('click', async () => {
-        const confirmed = await chessGame.dialog.showConfirm(
-            'Reset to starting position? Current moves will be lost.',
-            'Reset Position'
-        );
-
-        if (confirmed) {
-            await chessGame.resetToStartingPosition();
-
-            document.getElementById('blackClockContainer').style.display =
-                botDifficulty === 'none' ? 'block' : 'none';
-        }
+        await chessGame.undoLastMove();
+        updateTakeBackButton();
     });
 
     let isResizing = false;
