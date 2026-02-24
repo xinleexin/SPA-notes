@@ -1,5 +1,5 @@
 // ============================================
-// CHESS GAME SPA - Bot AI Class
+// CHESS GAME SPA - Bot AI Class (Refactored)
 // ============================================
 
 class BotAI {
@@ -74,6 +74,10 @@ class BotAI {
         ];
     }
 
+    // ============================================
+    // UTILITY FUNCTIONS - Shared across all modes
+    // ============================================
+
     getAllLegalMovesForColor(game, color) {
         const moves = [];
         for (let row = 0; row < 8; row++) {
@@ -81,7 +85,6 @@ class BotAI {
                 const piece = game.board.grid[row][col];
                 if (piece && piece.color === color) {
                     const legalMoves = game.gameState.getLegalMoves(game.board, row, col);
-                    // LOG: Piece found with its legal moves
                     console.log(`[BotAI.getAllLegalMoves] ${color} ${piece.type.toUpperCase()} at (${row},${col}) has ${legalMoves.length} legal move(s):`, 
                         JSON.stringify(legalMoves.map(m => `(${m.row},${m.col})`)));
                     for (const move of legalMoves) {
@@ -94,11 +97,8 @@ class BotAI {
         return moves;
     }
 
-    // Board cloning approach for safe move evaluation without mutating original state
     cloneGameForEvaluation(game) {
         const clonedBoard = new ChessBoard();
-        
-        // Deep copy grid with piece instances (not just data)
         clonedBoard.grid = game.board.copyGrid().map((row, rIdx) => 
             row.map((pieceData, cIdx) => {
                 if (!pieceData) return null;
@@ -124,32 +124,8 @@ class BotAI {
         return { 
             board: clonedBoard, 
             gameState: clonedGameState,
-            moveHistory: game.moveHistory ? [...game.moveHistory] : []  // Deep copy of history array
+            moveHistory: game.moveHistory ? [...game.moveHistory] : []
         };
-    }
-
-    generateMoveNotation(piece, from, to, targetPiece) {
-        let notation = '';
-        if (piece.type !== 'p') { notation += piece.type.toUpperCase(); }
-        
-        const columns = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
-        const rows = ['8', '7', '6', '5', '4', '3', '2', '1'];
-        
-        if (to.isEnPassant) {
-            notation += columns[from.col] + '×' + columns[to.col] + rows[to.row];
-        } else if (to.isCastling === 'kingside') {
-            notation = 'O-O';
-        } else if (to.isCastling === 'queenside') {
-            notation = 'O-O-O';
-        } else {
-            if (targetPiece || to.isEnPassant) {
-                if (piece.type === 'p') notation += columns[from.col];
-                notation += '×' + columns[to.col] + rows[to.row];
-            } else {
-                notation += columns[to.col] + rows[to.row];
-            }
-        }
-        return notation;
     }
 
     makeMoveOnClonedGame(clonedGame, from, to) {
@@ -201,8 +177,8 @@ class BotAI {
         clonedGame.board.grid[from.row][from.col] = null;
 
         if (piece.type === 'p') {
-            const lastRowWhite = 0;   // White reaches row 0
-            const lastRowBlack = 7;   // Black reaches row 7
+            const lastRowWhite = 0;
+            const lastRowBlack = 7;
             
             if (to.row === lastRowWhite || to.row === lastRowBlack) {
                 clonedGame.board.grid[to.row][to.col] = new Queen(piece.color);
@@ -213,7 +189,6 @@ class BotAI {
             clonedGame.gameState.enPassantTarget = { row: Math.floor((from.row + to.row) / 2), col: from.col };
         } else { clonedGame.gameState.enPassantTarget = null; }
         
-        // Update move history with the new move so repetition detection works correctly
         const notation = this.generateMoveNotation(piece, from, to, targetPiece);
         clonedGame.moveHistory.push({
             turn: clonedGame.moveHistory.length + 1,
@@ -226,165 +201,28 @@ class BotAI {
         });
     }
 
-    evaluateBoardOnCloned(clonedGame, botColor) {
-        return this.evaluateBoard(clonedGame, botColor);
-    }
-
-    // Evaluate piece trade - checks if capturing is worth it considering defenders
-    // Returns positive for good trades (gain material), negative for bad trades where S loses more than A gains
-    evaluatePieceTrade(clonedGame, fromRow, fromCol, destRow, destCol, botColor) {
-        const piece = clonedGame.board.grid[fromRow][fromCol];
-        const targetPiece = clonedGame.board.grid[destRow][destCol];
+    generateMoveNotation(piece, from, to, targetPiece) {
+        let notation = '';
+        if (piece.type !== 'p') { notation += piece.type.toUpperCase(); }
         
-        // Not a capture or en passant
-        if (!targetPiece || !piece) return 0;
+        const columns = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+        const rows = ['8', '7', '6', '5', '4', '3', '2', '1'];
         
-        const attackerValue = this.pieceValues[piece.type];
-        const targetValue = this.pieceValues[targetPiece.type];
-        
-        // Count defenders who can recapture the destination square after capture
-        let defenderCount = 0;
-        for (let row = 0; row < 8; row++) {
-            for (let col = 0; col < 8; col++) {
-                const p = clonedGame.board.grid[row][col];
-                // Check if opponent piece can attack this square
-                if (p && p.color !== botColor) { 
-                    if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, destRow, destCol, p.color)) {
-                        defenderCount++;
-                    }
-                }
+        if (to.isEnPassant) {
+            notation += columns[from.col] + '×' + columns[to.col] + rows[to.row];
+        } else if (to.isCastling === 'kingside') {
+            notation = 'O-O';
+        } else if (to.isCastling === 'queenside') {
+            notation = 'O-O-O';
+        } else {
+            if (targetPiece || to.isEnPassant) {
+                if (piece.type === 'p') notation += columns[from.col];
+                notation += '×' + columns[to.col] + rows[to.row];
+            } else {
+                notation += columns[to.col] + rows[to.row];
             }
         }
-        
-        // Trade evaluation:
-        // Good trade: attackerValue <= targetValue (gain or equal material)
-        // Bad trade with defenders: attackerValue > targetValue AND defenders > 0
-        if (attackerValue <= targetValue) {
-            return targetValue - attackerValue; // Positive bonus for good material gain
-        } else if (defenderCount === 0) {
-            return targetValue - attackerValue; // Still okay if no defender can recapture
-        }
-        
-        // Bad trade: losing more material with defenders
-        const loss = attackerValue - targetValue;
-        return -loss * (1 + defenderCount); // Heavily penalize losing more material with multiple defenders
-    }
-
-    // Get list of opponent pieces that threaten any of bot's vulnerable pieces (pieces under attack)
-    getThreateningOpponentPieces(clonedGame, botColor) {
-        const threateningPieces = [];
-        const opponentColor = botColor === 'white' ? 'black' : 'white';
-        
-        for (let row = 0; row < 8; row++) {
-            for (let col = 0; col < 8; col++) {
-                const piece = clonedGame.board.grid[row][col];
-                // Check if this is a bot's piece under attack
-                if (piece && piece.color === botColor) {
-                    // Use GameState's isSquareUnderAttack to check if this square would be attacked
-                    if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, row, col, opponentColor)) {
-                        console.log(`    [THREAT] Bot ${piece.type} at (${row},${col}) is under attack`);
-                        
-                        // Find all pieces that can attack this square by checking each opponent piece's pseudo moves
-                        for (let r = 0; r < 8; r++) {
-                            for (let c = 0; c < 8; c++) {
-                                const attacker = clonedGame.board.grid[r][c];
-                                if (attacker && attacker.color === opponentColor) {
-                                    // Use GameState's isSquareUnderAttack to check if this attacker can reach the square
-                                    if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, row, col, attacker.color)) {
-                                        threateningPieces.push({
-                                            from: {row: r, col: c},
-                                            to: {row: row, col: col},
-                                            piece: attacker,
-                                            threatValue: this.pieceValues[piece.type]
-                                        });
-                                        console.log(`      [THREAT] Found ${attacker.type} at (${r},${c}) threatening bot's ${piece.type}`);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        return threateningPieces;
-    }
-
-    // Evaluate move that protects a vulnerable piece
-    evaluateMoveProtectsVulnerablePiece(clonedGame, fromRow, fromCol, destRow, destCol, botColor) {
-        const opponentColor = botColor === 'white' ? 'black' : 'white';
-        
-        // Get pieces threatening bot's vulnerable pieces
-        const threats = this.getThreateningOpponentPieces(clonedGame, botColor);
-        
-        if (threats.length === 0) return 0;
-        
-        let protectionBonus = 0;
-        
-        for (const threat of threats) {
-            // Check if moving to destRow/destCol attacks the threatening piece
-            const pseudoMoves = this.getPseudoLegalMovesForPiece(clonedGame.board, clonedGame.gameState, fromRow, fromCol);
-            
-            for (const move of pseudoMoves) {
-                if (move.row === threat.from.row && move.col === threat.from.col) {
-                    // This move would attack the threatening piece
-                    const protectionValue = this.pieceValues[threat.piece.type];
-                    
-                    // Only bonus if protecting more valuable piece than attacking
-                    if (protectionValue > this.pieceValues['p']) { // At least pawn value
-                        protectionBonus += protectionValue * 0.5; // Give half the threat value as protection bonus
-                        
-                        console.log(`    [PROTECT] Moving to attack ${threat.piece.type.toUpperCase()} at (${threat.from.row},${threat.from.col}) - protecting piece worth ${protectionValue}`);
-                    }
-                }
-            }
-        }
-        
-        return protectionBonus;
-    }
-
-    getPseudoLegalMovesForPiece(board, gameState, row, col) {
-        const piece = board.getPiece(row, col);
-        if (!piece || !gameState) return [];
-        // Create a minimal GameState for pseudo moves
-        const tempGameState = new GameState(board);
-        return piece.getPseudoLegalMoves(board, tempGameState, row, col);
-    }
-
-    // Evaluate piece safety at a destination square - returns bonus if safe, penalty if unsafe
-    evaluatePieceSafety(clonedGame, destRow, destCol, botColor) {
-        const opponentColor = botColor === 'white' ? 'black' : 'white';
-        
-        let attackers = 0;
-        let defenders = 0;
-        
-        // Count opponent pieces that can attack this square
-        for (let row = 0; row < 8; row++) {
-            for (let col = 0; col < 8; col++) {
-                const piece = clonedGame.board.grid[row][col];
-                if (piece && piece.color === opponentColor) {
-                    // Use GameState's isSquareUnderAttack to check if this square would be attacked
-                    if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, destRow, destCol, opponentColor)) {
-                        attackers++;
-                    }
-                } else if (piece && piece.color === botColor) {
-                    defenders++;
-                }
-            }
-        }
-        
-        // Safety scoring: 
-        // - Safe square (no attackers): +0
-        // - Equal attackers/defenders: 0
-        // - More attackers than defenders: negative score proportional to deficit
-        if (attackers > defenders) {
-            return -(attackers - defenders) * this.pieceValues['p']; // Penalty for being under attack
-        } else if (attackers === 0 && defenders === 0) {
-            // Empty square is neutral
-            return 0;
-        }
-        return 5; // Small bonus for having a defender on the square
-        
+        return notation;
     }
 
     evaluateBoard(game, botColor) {
@@ -425,140 +263,139 @@ class BotAI {
         return score;
     }
 
-    getRandomMove(game, allMoves) {
-        const botColor = game.gameState.currentTurn === 'white' ? 'black' : 'white';
+    evaluatePieceSafety(clonedGame, destRow, destCol, botColor) {
         const opponentColor = botColor === 'white' ? 'black' : 'white';
-
-        console.log('[BotAI.getRandomMove] Evaluating random safe moves...');
         
-        const safeMoves = [];
-
-        for (const move of allMoves) {
-            // Clone game state safely for testing this move
-            const clonedGame = this.cloneGameForEvaluation(game);
-            
-            // LOG: Before making the test move - capture original piece info for trade evaluation
-            const fromPosLogRandom = `${columns[move.from.col]}${rows[move.from.row]}`;
-            const toPosLogRandom = `${columns[move.to.col]}${rows[move.to.row]}`;
-            const originalTargetPieceRandom = clonedGame.board.grid[move.to.row][move.to.col];
-            
-            // Make the test move on the clone
-            this.makeMoveOnClonedGame(clonedGame, move.from, move.to);
-            
-            // Update turn after the move
-            clonedGame.gameState.switchTurn();
-            
-            let kingInCheck = false;
-            const piece = clonedGame.board.grid[move.to.row][move.to.col];
-            if (piece && !move.to.isCastling) {
-                const kingPos = botColor === 'white' ? clonedGame.gameState.whiteKingPos : clonedGame.gameState.blackKingPos;
-                kingInCheck = clonedGame.gameState.isSquareUnderAttack(clonedGame.board, kingPos.row, kingPos.col, opponentColor);
-            }
-
-            const fromPos = `${columns[move.from.col]}${rows[move.from.row]}`;
-            const toPos = `${columns[move.to.col]}${rows[move.to.row]}`;
-            
-            if (!kingInCheck) { 
-                // Add piece trade evaluation for captures
-                
-                const protectionBonus = this.evaluateMoveProtectsVulnerablePiece(clonedGame, move.from.row, move.from.col, move.to.row, move.to.col, botColor);
-                if (protectionBonus > 0) {
-                    console.log(`    [PROTECTION] ${fromPos} -> ${toPos}: bonus=${protectionBonus.toFixed(0)}`);
+        let attackers = 0;
+        let defenders = 0;
+        
+        for (let row = 0; row < 8; row++) {
+            for (let col = 0; col < 8; col++) {
+                const piece = clonedGame.board.grid[row][col];
+                if (piece && piece.color === opponentColor) {
+                    if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, destRow, destCol, opponentColor)) {
+                        attackers++;
+                    }
+                } else if (piece && piece.color === botColor) {
+                    defenders++;
                 }
-                // Calculate trade bonus directly using original target piece info
-                let pieceTradeBonusRandom = 0;
-                if (originalTargetPieceRandom) {
-                    const attackerValue = this.pieceValues[clonedGame.board.grid[move.from.row][move.from.col]?.type || 'p'];
-                    const targetValue = this.pieceValues[originalTargetPieceRandom.type];
-                    const isGoodTrade = attackerValue <= targetValue;
-                    
-                    // Count defenders who can recapture the destination square
-                    let defenderCount = 0;
-                    for (let row = 0; row < 8; row++) {
-                        for (let col = 0; col < 8; col++) {
-                            const p = clonedGame.board.grid[row][col];
-                            if (p && p.color !== botColor) { 
-                                if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, move.to.row, move.to.col, p.color)) {
-                                    defenderCount++;
+            }
+        }
+        
+        if (attackers > defenders) {
+            return -(attackers - defenders) * this.pieceValues['p'];
+        } else if (attackers === 0 && defenders === 0) {
+            return 0;
+        }
+        return 5;
+    }
+
+    evaluatePieceTrade(clonedGame, fromRow, fromCol, destRow, destCol, botColor) {
+        const piece = clonedGame.board.grid[fromRow][fromCol];
+        const targetPiece = clonedGame.board.grid[destRow][destCol];
+        
+        if (!targetPiece || !piece) return 0;
+        
+        const attackerValue = this.pieceValues[piece.type];
+        const targetValue = this.pieceValues[targetPiece.type];
+        
+        let defenderCount = 0;
+        for (let row = 0; row < 8; row++) {
+            for (let col = 0; col < 8; col++) {
+                const p = clonedGame.board.grid[row][col];
+                if (p && p.color !== botColor) { 
+                    if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, destRow, destCol, p.color)) {
+                        defenderCount++;
+                    }
+                }
+            }
+        }
+        
+        if (attackerValue <= targetValue) {
+            return targetValue - attackerValue;
+        } else if (defenderCount === 0) {
+            return targetValue - attackerValue;
+        }
+        
+        const loss = attackerValue - targetValue;
+        return -loss * (1 + defenderCount);
+    }
+
+    getThreateningOpponentPieces(clonedGame, botColor) {
+        const threateningPieces = [];
+        const opponentColor = botColor === 'white' ? 'black' : 'white';
+        
+        for (let row = 0; row < 8; row++) {
+            for (let col = 0; col < 8; col++) {
+                const piece = clonedGame.board.grid[row][col];
+                if (piece && piece.color === botColor) {
+                    if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, row, col, opponentColor)) {
+                        console.log(`    [THREAT] Bot ${piece.type} at (${row},${col}) is under attack`);
+                        
+                        for (let r = 0; r < 8; r++) {
+                            for (let c = 0; c < 8; c++) {
+                                const attacker = clonedGame.board.grid[r][c];
+                                if (attacker && attacker.color === opponentColor) {
+                                    if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, row, col, attacker.color)) {
+                                        threateningPieces.push({
+                                            from: {row: r, col: c},
+                                            to: {row: row, col: col},
+                                            piece: attacker,
+                                            threatValue: this.pieceValues[piece.type]
+                                        });
+                                        console.log(`      [THREAT] Found ${attacker.type} at (${r},${c}) threatening bot's ${piece.type}`);
+                                    }
                                 }
                             }
                         }
                     }
-                    
-                    // Calculate trade bonus
-                    if (isGoodTrade || defenderCount === 0) {
-                        pieceTradeBonusRandom = targetValue - attackerValue;
-                    } else {
-                        const loss = attackerValue - targetValue;
-                        pieceTradeBonusRandom = -loss * (1 + defenderCount);
-                    }
-                    
-                    console.log(`    [TRADE] ${fromPosLogRandom} -> ${toPosLogRandom}: captured ${originalTargetPieceRandom.type}, defenders=${defenderCount}, value=${pieceTradeBonusRandom.toFixed(0)}`);
-                } else {
-                    console.log(`    [TRADE] ${fromPosLogRandom} -> ${toPosLogRandom}: no capture`);
                 }
-                
-                // Get piece safety for the moved piece
-                const pieceSafety = this.evaluatePieceSafety(clonedGame, move.to.row, move.to.col, botColor);
-                
-                const fromPosRandom = `${columns[move.from.col]}${rows[move.from.row]}`;
-                const toPosRandom = `${columns[move.to.col]}${rows[move.to.row]}`;
-
-                // Include trade bonus in overall score
-                const moveScore = pieceSafety + pieceTradeBonusRandom;
-                
-                // Accept move if: safe OR has any trade gain (not just negative)
-                const isValidMove = pieceSafety >= 0; // Safe square
-                const isGainTrade = pieceTradeBonusRandom > 0; // Positive material gain
-                
-                if (!isValidMove && !isGainTrade) {
-                    console.log(`  [UNSAFE/NO_GAIN] ${fromPosRandom} -> ${toPosRandom}: safety=${pieceSafety.toFixed(0)} trade=${pieceTradeBonusRandom.toFixed(0)} (skipped - no material gain to offset loss)`);
-                } else if (isValidMove && isGainTrade) {
-                    // Safe and has gain
-                    console.log(`  [SAFE/GAIN] ${fromPosRandom} -> ${toPosRandom}: safety=${pieceSafety.toFixed(0)} trade=${pieceTradeBonusRandom.toFixed(0)}`);
-                    safeMoves.push(move);
-                } else if (isValidMove) {
-                    // Just safe (no capture)
-                    console.log(`  [SAFE/NO_CAPTURE] ${fromPosRandom} -> ${toPosRandom}: safety=${pieceSafety.toFixed(0)}`);
-                    safeMoves.push(move);
-                } else {
-                    // Unsafe but has gain - accept it anyway for Easy mode
-                    const actualScore = pieceSafety + pieceTradeBonusRandom;
-                    console.log(`  [UNSAFE/GAIN] ${fromPosRandom} -> ${toPosRandom}: safety=${pieceSafety.toFixed(0)} trade=${pieceTradeBonusRandom.toFixed(0)}`);
-                    safeMoves.push(move);
-                }
-            } else {
-                console.log(`  [CHECK] ${fromPos} -> ${toPos}`);
             }
         }
         
-        // Edge case: If no moves passed our filter but we have legal moves, add all to candidates
-        if (safeMoves.length === 0 && allMoves.length > 0) {
-            console.warn(`[getRandomMove] No valid moves found after filtering - using ALL ${allMoves.length} legal moves as fallback`);
-            safeMoves.push(...allMoves);
-        }
-        // Fallback: If no valid moves found, use ALL legal moves as fallback to prevent bot from getting stuck
-        const candidates = safeMoves.length > 0 ? safeMoves : allMoves;
+        return threateningPieces;
+    }
+
+    evaluateMoveProtectsVulnerablePiece(clonedGame, fromRow, fromCol, destRow, destCol, botColor) {
+        const opponentColor = botColor === 'white' ? 'black' : 'white';
         
-        console.log(`[getRandomMove] Candidates after filtering: ${candidates.length}/${allMoves.length}`);
-        if (candidates.length === 0) {
-            console.warn('[getRandomMove] WARNING: No candidate moves found! This should not happen.');
-            return null;
+        const threats = this.getThreateningOpponentPieces(clonedGame, botColor);
+        
+        if (threats.length === 0) return 0;
+        
+        let protectionBonus = 0;
+        
+        for (const threat of threats) {
+            const pseudoMoves = this.getPseudoLegalMovesForPiece(clonedGame.board, clonedGame.gameState, fromRow, fromCol);
+            
+            for (const move of pseudoMoves) {
+                if (move.row === threat.from.row && move.col === threat.from.col) {
+                    const protectionValue = this.pieceValues[threat.piece.type];
+                    
+                    if (protectionValue > this.pieceValues['p']) {
+                        protectionBonus += protectionValue * 0.5;
+                        console.log(`    [PROTECT] Moving to attack ${threat.piece.type.toUpperCase()} at (${threat.from.row},${threat.from.col}) - protecting piece worth ${protectionValue}`);
+                    }
+                }
+            }
         }
         
-        const selected = candidates[Math.floor(Math.random() * candidates.length)];
-        console.log(`[BotAI.getRandomMove] Selected: ${columns[selected.from.col]}${rows[selected.from.row]} -> ${columns[selected.to.col]}${rows[selected.to.row]}`);
-        return { from: selected.from, to: selected.to };
+        return protectionBonus;
+    }
+
+    getPseudoLegalMovesForPiece(board, gameState, row, col) {
+        const piece = board.getPiece(row, col);
+        if (!piece || !gameState) return [];
+        const tempGameState = new GameState(board);
+        return piece.getPseudoLegalMoves(board, tempGameState, row, col);
     }
 
     isRepetition(game, move) {
         const history = game.moveHistory || [];
         
-        // Check for immediate back-and-forth reversal of previous black move
         if (history.length >= 2) {
             const lastMove = history[history.length - 1];
             
-            // If current move undoes the immediately preceding black move, it's repetition
             if (move.from.row === lastMove.to.row &&
                 move.from.col === lastMove.to.col &&
                 move.to.row === lastMove.from.row &&
@@ -567,7 +404,6 @@ class BotAI {
             }
         }
 
-        // Check for any prior occurrence of the exact same FROM->TO pattern
         const fromPos = `${move.from.row},${move.from.col}`;
         const toPos = `${move.to.row},${move.to.col}`;
         
@@ -579,11 +415,8 @@ class BotAI {
             }
         }
         
-        // If this move would make the same FROM->TO pattern occur 3 times, it's repetition
         if (matchCount >= 2) return true;
         
-        // Check for any prior occurrence of the exact REVERSE pattern
-        // This catches rook cycling: a8->b8 then b8->a8 is reverse of a8->b8
         const fromPosRev = `${move.to.row},${move.to.col}`;
         const toPosRev = `${move.from.row},${move.from.col}`;
         
@@ -595,14 +428,176 @@ class BotAI {
             }
         }
         
-        // If we've seen this exact reverse pattern before (1 time), it's a repetition
         if (reverseMatchCount >= 1) return true;
         
         return false;
     }
 
+    // ============================================
+    // COMMON EVALUATION FRAMEWORK - Shared by all modes
+    // ============================================
+
+    /**
+     * Calculate complete move score with all components
+     * Returns an object with all scoring components for detailed logging
+     */
+    calculateMoveScore(clonedGame, botColor, fromRow, fromCol, toRow, toCol) {
+        const opponentColor = botColor === 'white' ? 'black' : 'white';
+        
+        // Base board evaluation
+        const baseScore = this.evaluateBoard(clonedGame, botColor);
+        
+        // Piece safety at destination
+        const pieceSafety = this.evaluatePieceSafety(clonedGame, toRow, toCol, botColor);
+        
+        // Trade bonus (capture value considering defenders)
+        const targetPieceAtDestination = clonedGame.board.grid[toRow][toCol];
+        let tradeBonus = 0;
+        if (targetPieceAtDestination) {
+            const attackerValue = this.pieceValues[clonedGame.board.grid[fromRow][fromCol]?.type || 'p'];
+            const targetValue = this.pieceValues[targetPieceAtDestination.type];
+            const isGoodTrade = attackerValue <= targetValue;
+            
+            let defenderCount = 0;
+            for (let row = 0; row < 8; row++) {
+                for (let col = 0; col < 8; col++) {
+                    const p = clonedGame.board.grid[row][col];
+                    if (p && p.color !== botColor) { 
+                        if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, toRow, toCol, p.color)) {
+                            defenderCount++;
+                        }
+                    }
+                }
+            }
+            
+            if (isGoodTrade || defenderCount === 0) {
+                tradeBonus = targetValue - attackerValue;
+            } else {
+                const loss = attackerValue - targetValue;
+                tradeBonus = -loss * (1 + defenderCount);
+            }
+        }
+        
+        // Protection bonus
+        const protectionBonus = this.evaluateMoveProtectsVulnerablePiece(clonedGame, fromRow, fromCol, toRow, toCol, botColor);
+        
+        // Create a temporary move object for repetition check
+        const tempMove = { from: { row: fromRow, col: fromCol }, to: { row: toRow, col: toCol } };
+        let repetitionPenalty = 0;
+        if (this.isRepetition(clonedGame, tempMove)) { 
+            repetitionPenalty = -300; 
+        }
+        
+        // Early game king penalty
+        const isEarlyGame = clonedGame.moveHistory.length < 15;
+        const pieceAtDestination = clonedGame.board.grid[toRow][toCol];
+        const pieceType = pieceAtDestination ? pieceAtDestination.type : '';
+        let earlyKingPenalty = 0;
+        if (pieceType === 'k' && isEarlyGame) {
+            const startRow = botColor === 'white' ? 7 : 0;
+            // Check if king moved from starting position
+            const originalPiece = clonedGame.board.grid[fromRow][fromCol];
+            const pieceAtFrom = originalPiece || { type: '', color: '' };
+            if (pieceAtFrom.type !== 'k') {
+                earlyKingPenalty = -200;
+            }
+        }
+        
+        // Rook on starting squares penalty
+        let rookStartPenalty = 0;
+        if (pieceType === 'r' && 
+           ((toRow === 0 && toCol === 0) || (toRow === 7 && toCol === 7))) {
+            rookStartPenalty = -50;
+        }
+        
+        // Check penalty
+        const checkPenalty = clonedGame.gameState.isSquareUnderAttack(clonedGame.board, 
+            botColor === 'white' ? clonedGame.gameState.whiteKingPos : clonedGame.gameState.blackKingPos,
+            opponentColor) ? -500 : 0;
+        
+        return {
+            baseScore,
+            pieceSafety,
+            tradeBonus,
+            protectionBonus,
+            repetitionPenalty,
+            earlyKingPenalty,
+            rookStartPenalty,
+            checkPenalty,
+            total: baseScore + pieceSafety + tradeBonus + protectionBonus - Math.abs(repetitionPenalty) + earlyKingPenalty + rookStartPenalty + checkPenalty
+        };
+    }
+
+    /**
+     * Get all safe moves (not putting king in check)
+     */
+    filterSafeMoves(game, botColor, allMoves) {
+        const opponentColor = botColor === 'white' ? 'black' : 'white';
+        
+        return allMoves.filter(move => {
+            const clonedGame = this.cloneGameForEvaluation(game);
+            this.makeMoveOnClonedGame(clonedGame, move.from, move.to);
+            
+            // Update turn after the move
+            clonedGame.gameState.switchTurn();
+            
+            const piece = clonedGame.board.grid[move.to.row][move.to.col];
+            if (piece && !move.to.isCastling) {
+                const kingPos = botColor === 'white' ? clonedGame.gameState.whiteKingPos : clonedGame.gameState.blackKingPos;
+                return !clonedGame.gameState.isSquareUnderAttack(clonedGame.board, kingPos.row, kingPos.col, opponentColor);
+            }
+            return true;
+        });
+    }
+
+    // ============================================
+    // DIFFICULTY-SPECIFIC MODES
+    // ============================================
+
+    getRandomMove(game, allMoves) {
+        const botColor = game.gameState.currentTurn === 'white' ? 'black' : 'white';
+        const opponentColor = botColor === 'white' ? 'black' : 'white';
+
+        console.log('[BotAI.getRandomMove] Evaluating random safe moves...');
+        
+        // Filter safe moves (not putting king in check)
+        let safeMoves = [];
+        for (const move of allMoves) {
+            const clonedGame = this.cloneGameForEvaluation(game);
+            this.makeMoveOnClonedGame(clonedGame, move.from, move.to);
+            
+            // Update turn after the move
+            clonedGame.gameState.switchTurn();
+            
+            const piece = clonedGame.board.grid[move.to.row][move.to.col];
+            let kingInCheck = false;
+            if (piece && !move.to.isCastling) {
+                const kingPos = botColor === 'white' ? clonedGame.gameState.whiteKingPos : clonedGame.gameState.blackKingPos;
+                kingInCheck = clonedGame.gameState.isSquareUnderAttack(clonedGame.board, kingPos.row, kingPos.col, opponentColor);
+            }
+            
+            if (!kingInCheck) {
+                safeMoves.push(move);
+            } else {
+                console.log(`  [CHECK] ${this.formatMovePosition(move.from)} -> ${this.formatMovePosition(move.to)}`);
+            }
+        }
+        
+        // Fallback: If no valid moves found, use ALL legal moves
+        const candidates = safeMoves.length > 0 ? safeMoves : allMoves;
+        
+        console.log(`[getRandomMove] Safe moves: ${safeMoves.length}/${allMoves.length}, Candidates: ${candidates.length}`);
+        if (candidates.length === 0) {
+            console.warn('[getRandomMove] WARNING: No candidate moves found!');
+            return null;
+        }
+        
+        const selected = candidates[Math.floor(Math.random() * candidates.length)];
+        console.log(`[BotAI.getRandomMove] Selected: ${this.formatMovePosition(selected.from)} -> ${this.formatMovePosition(selected.to)}`);
+        return { from: selected.from, to: selected.to };
+    }
+
     getMediumMove(game, botColor, allMoves) {
-        // Defensive: ensure allMoves is valid
         if (!allMoves || !Array.isArray(allMoves) || allMoves.length === 0) {
             console.error('[BotAI.getMediumMove] Invalid or empty allMoves:', allMoves);
             return null;
@@ -615,13 +610,8 @@ class BotAI {
 
         console.log('[BotAI.getMediumMove] Evaluating', allMoves.length, 'moves...');
         for (const move of allMoves) {
-            // Clone game state safely for testing this move
+            // Clone game state safely
             const clonedGame = this.cloneGameForEvaluation(game);
-            
-            // LOG: Before making the test move - capture original piece info for trade evaluation
-            const fromPosLog = `(${move.from.row},${move.from.col})`;
-            const toPosLog = `(${move.to.row},${move.to.col})`;
-            const originalTargetPiece = clonedGame.board.grid[move.to.row][move.to.col];
             
             // Make the test move on the clone
             this.makeMoveOnClonedGame(clonedGame, move.from, move.to);
@@ -633,136 +623,33 @@ class BotAI {
                 kingInCheck = clonedGame.gameState.isSquareUnderAttack(clonedGame.board, kingPos.row, kingPos.col, opponentColor);
             }
 
-            // Initialize score first (needed for both paths)
-            let score;
-            const fromPos = `(${move.from.row},${move.from.col})`;
-            const toPos = `(${move.to.row},${move.to.col})`;
-            
             if (!kingInCheck) {
-                // Evaluate the board state after this move
-                const baseScore = this.evaluateBoard(clonedGame, botColor);
+                // Use common evaluation framework
+                const scores = this.calculateMoveScore(clonedGame, botColor, move.from.row, move.from.col, move.to.row, move.to.col);
                 
-                // Add piece safety bonus/penalty to the score
-                score = baseScore;
-                const pieceSafety = this.evaluatePieceSafety(clonedGame, move.to.row, move.to.col, botColor);
+                console.log(`[BotAI.getMediumMove] ${this.formatMovePosition(move.from)} -> ${this.formatMovePosition(move.to)}: score=${scores.total.toFixed(1)} ` +
+                    `(base=${scores.baseScore} safety=${scores.pieceSafety} trade=${scores.tradeBonus} protection=${scores.protectionBonus})`);
                 
-                // Add piece trade evaluation for captures
-                let pieceTradeBonus = 0;
-                if (originalTargetPiece) {
-                    const attackerValue = this.pieceValues[clonedGame.board.grid[move.from.row][move.from.col]?.type || 'p'];
-                    const targetValue = this.pieceValues[originalTargetPiece.type];
-                    const isGoodTrade = attackerValue <= targetValue;
-                    
-                    // Count defenders who can recapture the destination square
-                    let defenderCount = 0;
-                    for (let row = 0; row < 8; row++) {
-                        for (let col = 0; col < 8; col++) {
-                            const p = clonedGame.board.grid[row][col];
-                            if (p && p.color !== botColor) { 
-                                if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, move.to.row, move.to.col, p.color)) {
-                                    defenderCount++;
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Calculate trade bonus
-                    if (isGoodTrade || defenderCount === 0) {
-                        pieceTradeBonus = targetValue - attackerValue;
-                    } else {
-                        const loss = attackerValue - targetValue;
-                        pieceTradeBonus = -loss * (1 + defenderCount);
-                    }
-                    
-                    console.log(`  [TRADE] ${fromPosLog} -> ${toPosLog}: captured ${originalTargetPiece.type}, defenders=${defenderCount}, value=${pieceTradeBonus.toFixed(0)}`);
-                } else {
-                    console.log(`  [TRADE] ${fromPosLog} -> ${toPosLog}: no capture`);
-                }
-                
-                score += pieceSafety + pieceTradeBonus;
-                
-                // Add protection bonus for moves that attack threatening pieces
-                const protectionBonus = this.evaluateMoveProtectsVulnerablePiece(clonedGame, move.from.row, move.from.col, move.to.row, move.to.col, botColor);
-                if (protectionBonus > 0) {
-                    score += protectionBonus;
-                    console.log(`    [PROTECTION] ${fromPos} -> ${toPos}: bonus=${protectionBonus.toFixed(0)}`);
-                }
-                const reasons = [];
-                
-                // Check for repetition in cloned game's history (we need to simulate it)
-                if (this.isRepetition(clonedGame, move)) { 
-                    score -= 200; 
-                    reasons.push('repetition(-200)');
-                }
+                if (scores.repetitionPenalty < 0) console.log(`    [REPEATING] repetition penalty applied`);
+                if (scores.earlyKingPenalty < 0) console.log(`    [EARLY_KING] early king move penalty applied`);
+                if (scores.rookStartPenalty < 0) console.log(`    [ROOK_START] rook on start squares penalty applied`);
 
-                const isEarlyGame = clonedGame.moveHistory.length < 15;
-                const pieceType = piece ? piece.type : '';
-                if (pieceType === 'k' && isEarlyGame) {
-                    const startRow = botColor === 'white' ? 7 : 0;
-                    if (move.from.row !== startRow || move.to.row !== startRow) {
-                        score -= 300;
-                        reasons.push('earlyKing(-300)');
-                    }
+                // Add protection bonus to total
+                scores.total += scores.protectionBonus;
+                
+                if (scores.total > bestScore) { 
+                    bestScore = scores.total; 
+                    bestScoreMoves = [move]; 
+                } else if (scores.total === bestScore) { 
+                    bestScoreMoves.push(move); 
                 }
-
-                // Check for rook on starting squares
-                const pieceTypeForRook = piece ? piece.type : '';
-                if (pieceTypeForRook === 'r' && 
-                   ((move.to.row === 0 && move.to.col === 0) || (move.to.row === 7 && move.to.col === 7))) {
-                    score -= 50;
-                    reasons.push('rookStart(-50)');
-                }
-
-                console.log(`[BotAI.getMediumMove] ${fromPos} -> ${toPos}: score=${score.toFixed(1)} (${reasons.join(', ')})`);
             } else {
-                // King in check - this move is invalid, give very low score
-                let pieceTradeBonusKingCheck = 0;
-                if (originalTargetPiece) {
-                    const attackerValue = this.pieceValues[clonedGame.board.grid[move.from.row][move.from.col]?.type || 'p'];
-                    const targetValue = this.pieceValues[originalTargetPiece.type];
-                    const isGoodTrade = attackerValue <= targetValue;
-                    
-                    // Count defenders who can recapture the destination square
-                    let defenderCount = 0;
-                    for (let row = 0; row < 8; row++) {
-                        for (let col = 0; col < 8; col++) {
-                            const p = clonedGame.board.grid[row][col];
-                            if (p && p.color !== botColor) { 
-                                if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, move.to.row, move.to.col, p.color)) {
-                                    defenderCount++;
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Calculate trade bonus
-                    if (isGoodTrade || defenderCount === 0) {
-                        pieceTradeBonusKingCheck = targetValue - attackerValue;
-                    } else {
-                        const loss = attackerValue - targetValue;
-                        pieceTradeBonusKingCheck = -loss * (1 + defenderCount);
-                    }
-                    
-                    console.log(`    [TRADE] ${fromPosLog} -> ${toPosLog}: captured ${originalTargetPiece.type}, defenders=${defenderCount}, value=${pieceTradeBonusKingCheck.toFixed(0)}`);
-                } else {
-                    console.log(`    [TRADE] ${fromPosLog} -> ${toPosLog}: no capture`);
-                }
-                
-                score = -Infinity + pieceTradeBonusKingCheck; // Still consider trade value for logging
-                console.log(`[BotAI.getMediumMove] ${fromPosLog} -> ${toPosLog}: kingInCheck (skipped)`);
-            }
-
-            if (score > bestScore) { 
-                bestScore = score; 
-                bestScoreMoves = [move]; 
-            } else if (score === bestScore) { 
-                bestScoreMoves.push(move); 
+                console.log(`[BotAI.getMediumMove] ${this.formatMovePosition(move.from)} -> ${this.formatMovePosition(move.to)}: kingInCheck (skipped)`);
             }
         }
         
         console.log(`[BotAI.getMediumMove] Best score: ${bestScore}, Options count: ${bestScoreMoves.length}`);
 
-        // Return move or null if none found
         const result = bestScoreMoves.length > 0
             ? bestScoreMoves[Math.floor(Math.random() * bestScoreMoves.length)]
             : (allMoves && allMoves.length > 0) ? allMoves[0] : null;
@@ -772,7 +659,6 @@ class BotAI {
     }
 
     getHardMove(game, botColor, allMoves) {
-        // Defensive: ensure allMoves is valid
         if (!allMoves || !Array.isArray(allMoves) || allMoves.length === 0) {
             console.error('[BotAI.getHardMove] Invalid or empty allMoves:', allMoves);
             return null;
@@ -780,88 +666,36 @@ class BotAI {
         
         const safeMoves = [];
         
+        // First pass: filter safe moves and calculate basic scores
         for (const move of allMoves) {
-            // Clone game state safely
             const clonedGame = this.cloneGameForEvaluation(game);
             
-            // LOG: Before making the test move - capture original piece info for trade evaluation
-            const fromPosLogHard = `(${move.from.row},${move.from.col})`;
-            const toPosLogHard = `(${move.to.row},${move.to.col})`;
-            const originalTargetPieceHard = clonedGame.board.grid[move.to.row][move.to.col];
-            
-            // Make the test move on clone
             this.makeMoveOnClonedGame(clonedGame, move.from, move.to);
             
             let kingInCheck = false;
-            const piece = clonedGame.board.grid[move.to.row][move.to.col];
-            if (piece && !move.to.isCastling) {
+            if (!move.to.isCastling) {
                 const opponentColor = botColor === 'white' ? 'black' : 'white';
                 const kingPos = botColor === 'white' ? clonedGame.gameState.whiteKingPos : clonedGame.gameState.blackKingPos;
                 kingInCheck = clonedGame.gameState.isSquareUnderAttack(clonedGame.board, kingPos.row, kingPos.col, opponentColor);
             }
             
             if (!kingInCheck) {
-                // Add piece trade evaluation for captures
+                // Calculate move score
+                const scores = this.calculateMoveScore(clonedGame, botColor, move.from.row, move.from.col, move.to.row, move.to.col);
                 
-                const fromPos = `${columns[move.from.col]}${rows[move.from.row]}`;
-                const toPos = `${columns[move.to.col]}${rows[move.to.row]}`;
+                const overallScore = scores.total + scores.tradeBonus;
                 
-                const protectionBonus = this.evaluateMoveProtectsVulnerablePiece(clonedGame, move.from.row, move.from.col, move.to.row, move.to.col, botColor);
-                if (protectionBonus > 0) {
-                    console.log(`    [PROTECTION] ${fromPos} -> ${toPos}: bonus=${protectionBonus.toFixed(0)}`);
-                }
-                
-                // Calculate piece trade bonus directly using original target piece info
-                let pieceTradeBonus = 0;
-                if (originalTargetPieceHard) {
-                    const attackerValue = this.pieceValues[clonedGame.board.grid[move.from.row][move.from.col]?.type || 'p'];
-                    const targetValue = this.pieceValues[originalTargetPieceHard.type];
-                    const isGoodTrade = attackerValue <= targetValue;
-                    
-                    // Count defenders who can recapture the destination square
-                    let defenderCount = 0;
-                    for (let row = 0; row < 8; row++) {
-                        for (let col = 0; col < 8; col++) {
-                            const p = clonedGame.board.grid[row][col];
-                            if (p && p.color !== botColor) { 
-                                if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, move.to.row, move.to.col, p.color)) {
-                                    defenderCount++;
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Calculate trade bonus
-                    if (isGoodTrade || defenderCount === 0) {
-                        pieceTradeBonus = targetValue - attackerValue;
-                    } else {
-                        const loss = attackerValue - targetValue;
-                        pieceTradeBonus = -loss * (1 + defenderCount);
-                    }
-                    
-                    console.log(`    [TRADE] ${fromPosLogHard} -> ${toPosLogHard}: captured ${originalTargetPieceHard.type}, defenders=${defenderCount}, value=${pieceTradeBonus.toFixed(0)}`);
+                // Accept moves where gain outweighs safety loss by at least 2 pawns worth (-200)
+                if (overallScore >= -200) {
+                    safeMoves.push({ move, scores });
+                    console.log(`[getHardMove] Safe: ${this.formatMovePosition(move.from)} -> ${this.formatMovePosition(move.to)}: score=${scores.total.toFixed(0)}`);
                 } else {
-                    console.log(`    [TRADE] ${fromPosLogHard} -> ${toPosLogHard}: no capture`);
-                }
-                
-                // Check piece safety - don't move to a square where piece will be attacked immediately
-                const pieceSafety = this.evaluatePieceSafety(clonedGame, move.to.row, move.to.col, botColor);
-                
-                const fromPosLog = `${columns[move.from.col]}${rows[move.from.row]}`;
-                const toPosLog = `${columns[move.to.col]}${rows[move.to.row]}`;
-                
-                // Include trade bonus in safety check - accept moves with pieceTradeBonus that offset negative safety by at least 2 pawns worth
-            const overallScore = pieceSafety + pieceTradeBonus;
-            if (overallScore >= -200) { // Allow trades where gain outweighs safety loss by at least 2 pawns worth
-                    safeMoves.push(move);
-                    console.log(`[getHardMove] Safe: ${fromPosLog} -> ${toPosLog}: safety=${pieceSafety.toFixed(0)} trade=${pieceTradeBonus.toFixed(0)}`);
-                } else {
-                    console.log(`[getHardMove] Unsafe (skipped): ${fromPosLog} -> ${toPosLog}: safety=${pieceSafety.toFixed(0)} trade=${pieceTradeBonus.toFixed(0)}`);
+                    console.log(`[getHardMove] Unsafe (skipped): ${this.formatMovePosition(move.from)} -> ${this.formatMovePosition(move.to)}: score=${overallScore.toFixed(0)}`);
                 }
             }
         }
 
-        const candidates = safeMoves.length > 0 ? safeMoves : allMoves;
+        const candidates = safeMoves.length > 0 ? safeMoves : allMoves.map(m => ({ move: m, scores: null }));
 
         if (!candidates || candidates.length === 0) {
             return null;
@@ -870,77 +704,33 @@ class BotAI {
         let bestMove = null;
         let bestScore = -Infinity;
 
-        for (const move of candidates) {
-            // Clone game state safely
-            const clonedGame = this.cloneGameForEvaluation(game);
+        for (const candidate of candidates) {
+            const move = candidate.move;
             
-            // Make the test move on clone
+            // Clone game state for minimax
+            const clonedGame = this.cloneGameForEvaluation(game);
             this.makeMoveOnClonedGame(clonedGame, move.from, move.to);
             
             const opponentColor = botColor === 'white' ? 'black' : 'white';
             let oppScore = this.minimax(clonedGame, opponentColor, 1);
             
-            // Calculate check penalty based on cloned game state
-            let checkPenalty = 0;
-            if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, 
-                botColor === 'white' ? clonedGame.gameState.whiteKingPos : clonedGame.gameState.blackKingPos,
-                opponentColor)) {
-                checkPenalty = -500;
-            }
+            // Get full evaluation
+            const scores = candidate.scores || this.calculateMoveScore(clonedGame, botColor, move.from.row, move.from.col, move.to.row, move.to.col);
             
-            // Add piece safety and protection bonus to Hard mode evaluation
-            const fromPos = `${columns[move.from.col]}${rows[move.from.row]}`;
-            const toPos = `${columns[move.to.col]}${rows[move.to.row]}`;
-            
-            const protectionBonus = this.evaluateMoveProtectsVulnerablePiece(clonedGame, move.from.row, move.from.col, move.to.row, move.to.col, botColor);
-                
-            if (protectionBonus > 0) {
-                console.log(`    [PROTECTION] ${fromPos} -> ${toPos}: bonus=${protectionBonus.toFixed(0)}`);
-            }
-                
-            const pieceSafety = this.evaluatePieceSafety(clonedGame, move.to.row, move.to.col, botColor);
-            
-            // Calculate piece trade bonus for Hard mode evaluation
-            let pieceTradeBonusHard = 0;
-            const targetPieceAtDestination = clonedGame.board.grid[move.to.row][move.to.col];
-            if (targetPieceAtDestination) {
-                const attackerValue = this.pieceValues[clonedGame.board.grid[move.from.row][move.from.col]?.type || 'p'];
-                const targetValue = this.pieceValues[targetPieceAtDestination.type];
-                const isGoodTrade = attackerValue <= targetValue;
-                
-                // Count defenders who can recapture the destination square
-                let defenderCountHard = 0;
-                for (let row = 0; row < 8; row++) {
-                    for (let col = 0; col < 8; col++) {
-                        const p = clonedGame.board.grid[row][col];
-                        if (p && p.color !== botColor) { 
-                            if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, move.to.row, move.to.col, p.color)) {
-                                defenderCountHard++;
-                            }
-                        }
-                    }
-                }
-                
-                // Calculate trade bonus
-                if (isGoodTrade || defenderCountHard === 0) {
-                    pieceTradeBonusHard = targetValue - attackerValue;
-                } else {
-                    const loss = attackerValue - targetValue;
-                    pieceTradeBonusHard = -loss * (1 + defenderCountHard);
-                }
-            }
-            
-            let score = -oppScore + checkPenalty + pieceSafety + pieceTradeBonusHard + protectionBonus;
-            if (this.isRepetition(clonedGame, move)) { 
+            // Create temporary move for repetition check
+            const tempMove = { from: { row: move.from.row, col: move.from.col }, to: { row: move.to.row, col: move.to.col } };
+            let score = -oppScore + scores.total;
+            if (this.isRepetition(clonedGame, tempMove)) { 
                 score -= 300; 
-                console.log(`    [REPEATING] ${fromPos} -> ${toPos}: repetition penalty applied`);
+                console.log(`    [REPEATING] ${this.formatMovePosition(move.from)} -> ${this.formatMovePosition(move.to)}: repetition penalty applied`);
             }
             
-            const isEarlyGame = clonedGame.moveHistory.length < 15;
-            const pieceType = clonedGame.board.grid[move.to.row][move.to.col] ? clonedGame.board.grid[move.to.row][move.to.col].type : '';
-            if (pieceType === 'k' && isEarlyGame) {
+            const pieceAtDestination = clonedGame.board.grid[move.to.row][move.to.col];
+            if (pieceAtDestination && pieceAtDestination.type === 'k' && clonedGame.moveHistory.length < 15) {
                 score -= 200;
             }
+
+            console.log(`[getHardMove] ${this.formatMovePosition(move.from)} -> ${this.formatMovePosition(move.to)}: total=${score.toFixed(0)} (oppScore=${-oppScore})`);
 
             if (score > bestScore) {
                 bestScore = score;
@@ -948,8 +738,12 @@ class BotAI {
             }
         }
 
-        return bestMove || candidates[0];
+        return bestMove || candidates[0].move;
     }
+
+    // ============================================
+    // MINIMAX ALGORITHM - Hard mode
+    // ============================================
 
     minimax(game, color, depth, alpha = -Infinity, beta = Infinity) {
         const moves = this.getAllLegalMovesForColor(game, color);
@@ -979,13 +773,9 @@ class BotAI {
         if (color === 'black') {
             bestScore = alpha;
             for (const item of scoredMoves) {
-                // Clone game state safely
                 const clonedGame = this.cloneGameForEvaluation(game);
-                
-                // Make the test move on clone
                 this.makeMoveOnClonedGame(clonedGame, item.move.from, item.move.to);
                 
-                // After making a move, it's white's turn next
                 const score = this.minimax(clonedGame, 'white', depth - 1, bestScore, beta);
                 bestScore = Math.max(bestScore, score);
                 if (bestScore >= beta) { break; }
@@ -993,13 +783,9 @@ class BotAI {
         } else {
             bestScore = beta;
             for (const item of scoredMoves) {
-                // Clone game state safely
                 const clonedGame = this.cloneGameForEvaluation(game);
-                
-                // Make the test move on clone
                 this.makeMoveOnClonedGame(clonedGame, item.move.from, item.move.to);
                 
-                // After making a move, it's black's turn next
                 const score = this.minimax(clonedGame, 'black', depth - 1, alpha, bestScore);
                 bestScore = Math.min(bestScore, score);
                 if (bestScore <= alpha) { break; }
@@ -1027,6 +813,16 @@ class BotAI {
             : -Math.min(bestCaptureValue, 500));
     }
 
+    // ============================================
+    // MOVE SELECTION
+    // ============================================
+
+    formatMovePosition(pos) {
+        const columns = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+        const rows = ['8', '7', '6', '5', '4', '3', '2', '1'];
+        return `${columns[pos.col]}${rows[pos.row]}`;
+    }
+
     makeMove(game) {
         const botColor = 'black';
         console.log(`\n=== [BotAI.makeMove] Black's Turn ===`);
@@ -1041,9 +837,7 @@ class BotAI {
 
         console.log(`[BotAI.makeMove] All ${allMoves.length} legal moves:`);
         allMoves.forEach((m, i) => {
-            const fromPos = `${columns[m.from.col]}${rows[m.from.row]}`;
-            const toPos = `${columns[m.to.col]}${rows[m.to.row]}`;
-            console.log(`  [${i}] ${fromPos} -> ${toPos}`);
+            console.log(`  [${i}] ${this.formatMovePosition(m.from)} -> ${this.formatMovePosition(m.to)}`);
         });
 
         let bestMove = null;
@@ -1067,9 +861,7 @@ class BotAI {
             bestMove = allMoves[0];
         }
 
-        const fromPosBest = `${columns[bestMove.from.col]}${rows[bestMove.from.row]}`;
-        const toPosBest = `${columns[bestMove.to.col]}${rows[bestMove.to.row]}`;
-        console.log(`[BotAI.makeMove] SELECTED: ${fromPosBest} -> ${toPosBest}\n`);
+        console.log(`[BotAI.makeMove] SELECTED: ${this.formatMovePosition(bestMove.from)} -> ${this.formatMovePosition(bestMove.to)}\n`);
 
         return { type: 'move', from: bestMove.from, to: bestMove.to };
     }
