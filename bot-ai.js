@@ -124,8 +124,32 @@ class BotAI {
         return { 
             board: clonedBoard, 
             gameState: clonedGameState,
-            moveHistory: game.moveHistory || []  // Include move history for isRepetition checks
+            moveHistory: game.moveHistory ? [...game.moveHistory] : []  // Deep copy of history array
         };
+    }
+
+    generateMoveNotation(piece, from, to, targetPiece) {
+        let notation = '';
+        if (piece.type !== 'p') { notation += piece.type.toUpperCase(); }
+        
+        const columns = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+        const rows = ['8', '7', '6', '5', '4', '3', '2', '1'];
+        
+        if (to.isEnPassant) {
+            notation += columns[from.col] + '×' + columns[to.col] + rows[to.row];
+        } else if (to.isCastling === 'kingside') {
+            notation = 'O-O';
+        } else if (to.isCastling === 'queenside') {
+            notation = 'O-O-O';
+        } else {
+            if (targetPiece || to.isEnPassant) {
+                if (piece.type === 'p') notation += columns[from.col];
+                notation += '×' + columns[to.col] + rows[to.row];
+            } else {
+                notation += columns[to.col] + rows[to.row];
+            }
+        }
+        return notation;
     }
 
     makeMoveOnClonedGame(clonedGame, from, to) {
@@ -188,6 +212,18 @@ class BotAI {
         if (to.isDoublePawn) {
             clonedGame.gameState.enPassantTarget = { row: Math.floor((from.row + to.row) / 2), col: from.col };
         } else { clonedGame.gameState.enPassantTarget = null; }
+        
+        // Update move history with the new move so repetition detection works correctly
+        const notation = this.generateMoveNotation(piece, from, to, targetPiece);
+        clonedGame.moveHistory.push({
+            turn: clonedGame.moveHistory.length + 1,
+            color: piece.color,
+            from: { row: from.row, col: from.col },
+            to: { row: to.row, col: to.col },
+            piece: piece,
+            captured: targetPiece || null,
+            notation: notation
+        });
     }
 
     evaluateBoardOnCloned(clonedGame, botColor) {
@@ -517,27 +553,51 @@ class BotAI {
 
     isRepetition(game, move) {
         const history = game.moveHistory || [];
+        
+        // Check for immediate back-and-forth reversal of previous black move
         if (history.length >= 2) {
             const lastMove = history[history.length - 1];
-            const secondLastMove = history.length >= 2 ? history[history.length - 2] : null;
-
-            if (secondLastMove &&
-                move.from.row === secondLastMove.to.row &&
-                move.from.col === secondLastMove.to.col &&
-                move.to.row === secondLastMove.from.row &&
-                move.to.col === secondLastMove.from.col) {
+            
+            // If current move undoes the immediately preceding black move, it's repetition
+            if (move.from.row === lastMove.to.row &&
+                move.from.col === lastMove.to.col &&
+                move.to.row === lastMove.from.row &&
+                move.to.col === lastMove.from.col) {
                 return true;
             }
+        }
 
-            for (let i = 0; i < history.length - 1; i++) {
-                if (history[i].from.row === move.to.row &&
-                    history[i].from.col === move.to.col &&
-                    history[i].to.row === move.from.row &&
-                    history[i].to.col === move.from.col) {
-                    return true;
-                }
+        // Check for any prior occurrence of the exact same FROM->TO pattern
+        const fromPos = `${move.from.row},${move.from.col}`;
+        const toPos = `${move.to.row},${move.to.col}`;
+        
+        let matchCount = 0;
+        for (let i = 0; i < history.length; i++) {
+            if (`${history[i].from.row},${history[i].from.col}` === fromPos &&
+                `${history[i].to.row},${history[i].to.col}` === toPos) {
+                matchCount++;
             }
         }
+        
+        // If this move would make the same FROM->TO pattern occur 3 times, it's repetition
+        if (matchCount >= 2) return true;
+        
+        // Check for any prior occurrence of the exact REVERSE pattern
+        // This catches rook cycling: a8->b8 then b8->a8 is reverse of a8->b8
+        const fromPosRev = `${move.to.row},${move.to.col}`;
+        const toPosRev = `${move.from.row},${move.from.col}`;
+        
+        let reverseMatchCount = 0;
+        for (let i = 0; i < history.length; i++) {
+            if (`${history[i].from.row},${history[i].from.col}` === fromPosRev &&
+                `${history[i].to.row},${history[i].to.col}` === toPosRev) {
+                reverseMatchCount++;
+            }
+        }
+        
+        // If we've seen this exact reverse pattern before (1 time), it's a repetition
+        if (reverseMatchCount >= 1) return true;
+        
         return false;
     }
 
@@ -870,10 +930,12 @@ class BotAI {
                 }
             }
             
-            const score = -oppScore + checkPenalty + pieceSafety + pieceTradeBonusHard + protectionBonus;
-            let repetitionPenalty = 0;
-            if (this.isRepetition(clonedGame, move)) { repetitionPenalty = -300; }
-
+            let score = -oppScore + checkPenalty + pieceSafety + pieceTradeBonusHard + protectionBonus;
+            if (this.isRepetition(clonedGame, move)) { 
+                score -= 300; 
+                console.log(`    [REPEATING] ${fromPos} -> ${toPos}: repetition penalty applied`);
+            }
+            
             const isEarlyGame = clonedGame.moveHistory.length < 15;
             const pieceType = clonedGame.board.grid[move.to.row][move.to.col] ? clonedGame.board.grid[move.to.row][move.to.col].type : '';
             if (pieceType === 'k' && isEarlyGame) {

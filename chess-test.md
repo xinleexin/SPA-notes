@@ -23,15 +23,7 @@ This will:
 - Start a Python HTTP server on port 8000
 - Automatically open your browser to `http://localhost:8000/chess.html`
 
-**Option 2: Manual Command Line**
-```cmd
-cd C:\Users\xinle\code\SPA-notes
-python -m http.server 8000
-```
-Then manually navigate to `http://localhost:8000/chess.html` in your browser.
-
 ### Testing with chrome-devtools-mcp
-
 After starting the HTTP server, use `navigate_page` tool to access the chess game:
 
 ```javascript
@@ -40,7 +32,6 @@ navigate_page({ type: 'url', url: 'http://localhost:8000/chess.html' })
 ```
 
 **Note:** Wait for the board squares to render (board is populated dynamically via JavaScript). Take a snapshot using `take_snapshot` to understand the page layout.
-
 ---
 
 ## Test Scenario 1: Create New Game and Validate Board
@@ -161,6 +152,76 @@ getLegalMoves: (row, col) => chessGame.getLegalMoves(chessGame.board, row, col),
 |------|--------|-----------------|
 | 1 | Set difficulty to "Medium" or "Hard" | Bot responds with strategic move based on minimax algorithm |
 | 2 | Observe console logs | `[BotAI.makeMove]` messages show evaluation of moves |
+
+---
+
+## Bug Fix: Infinite Rook Loop (Hard Difficulty)
+
+### Issue Description
+When playing with "Hard" difficulty, the bot would fall into an infinite loop moving a Rook back and forth between b8 and a8. The move history that reproduced this issue was: d4, Na6, e3, Rb8, e4, Ra8
+
+### Root Cause
+The `makeMoveOnClonedGame()` function in bot-ai.js was not updating the cloned game's `moveHistory` array after making test moves during evaluation. This caused the `isRepetition()` check to always compare against stale history data, failing to detect when a rook would cycle between two squares.
+
+### Fix Applied
+Added move history tracking to `makeMoveOnClonedGame()`:
+```javascript
+// Update move history with the new move so repetition detection works correctly
+const notation = this.generateMoveNotation(piece, from, to);
+clonedGame.moveHistory.push({
+    turn: clonedGame.moveHistory.length + 1,
+    color: piece.color,
+    from: { row: from.row, col: from.col },
+    to: { row: to.row, col: to.col },
+    piece: piece,
+    captured: targetPiece || null,
+    notation: notation
+});
+```
+
+Added new helper method `generateMoveNotation()` for proper move notation generation.
+
+---
+
+## E2E Test: Hard Bot No Infinite Loop
+
+### Prerequisites
+- Start HTTP server using `start-server.ps1`
+- Navigate to chess game: `navigate_page({ type: 'url', url: 'http://localhost:8000/chess.html' })`
+
+### Setup Steps
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Set difficulty dropdown to "Hard" | Difficulty set correctly |
+
+### Test Scenario: Reproduce and Verify Fix for Infinite Rook Loop
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 2 | Click white pawn at d2 (UID from snapshot) | Square highlights yellow, shows legal moves |
+| 3 | Click d4 square to move | Pawn moves d2→d4, turn switches to Black |
+| 4 | Wait for bot response (~500ms) | Bot responds with Na6 (knight b8→a8) |
+| 5 | Click white pawn at e2 | Square highlights yellow |
+| 6 | Click e3 square to move | Pawn moves e2→e3, turn switches to Black |
+| 7 | Wait for bot response | Bot responds with Rb8 (rook a8→b8) |
+| 8 | Click white pawn at e4 | Square highlights yellow |
+| 9 | Click e4 square to move | Pawn moves e2→e4, turn switches to Black |
+| 10 | Wait for bot response | Bot responds with Ra8 (rook b8→a8) |
+| 11 | Take snapshot after Ra8 | Verify rook at a8, board state correct |
+| 12 | Click white c2 pawn to move | White makes any legal move |
+| 13-20 | Monitor next 8 bot moves via console logs | Bot should NOT cycle Rook between b8↔a8 |
+
+### Validation Points
+- After Ra8 (move 6), black rook is at a8
+- White makes move, then bot responds with Black's turn
+- **Bug Fixed**: Console log shows `repetition(-300)` penalty applied when rook would cycle back to b8
+- Bot selects alternative moves instead of repeating the same rook pattern
+
+### Expected Console Output (for verification)
+```
+[BotAI.getHardMove] Safe: Ra8 -> Rb8: safety=100 trade=-500  <- Should NOT appear after fix
+[BotAI.isRepetition] Detection working correctly for back-and-forth moves
+```
 
 ---
 

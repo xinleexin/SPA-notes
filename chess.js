@@ -327,7 +327,12 @@ class GameState {
             for (let col = 0; col < 8; col++) {
                 const piece = board.getPiece(row, col);
                 if (piece && piece.color === color) { 
-                    if (this.getLegalMoves(board, row, col).length > 0) return true;
+                    // Temporarily set currentTurn to check moves for this color
+                    const originalTurn = this.currentTurn;
+                    this.currentTurn = color;
+                    const legalMoves = this.getLegalMoves(board, row, col);
+                    this.currentTurn = originalTurn;  // Restore
+                    if (legalMoves.length > 0) return true;
                 }
             }
         }
