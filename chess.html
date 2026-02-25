@@ -879,6 +879,13 @@ function loadFromSaved(savedData) {
     chessGame.lastMove = state.lastMove;
 
     botDifficulty = state.botDifficulty !== undefined ? state.botDifficulty : 'medium';
+    
+    // Update dropdown to match loaded difficulty
+    const selectElement = document.getElementById('mcp-bot-difficulty-select');
+    if (selectElement) {
+        selectElement.value = botDifficulty;
+    }
+    
     chessGame.currentTime = { ...state.currentTime };
     chessGame.currentTurnTime = null;
 
@@ -993,6 +1000,11 @@ function setupEventListeners() {
 
     document.getElementById('mcp-bot-difficulty-select').addEventListener('change', async (e) => {
         botDifficulty = e.target.value;
+        
+        // Update chessGame.botDifficulty to ensure it reflects current difficulty
+        if (chessGame && chessGame.botAI !== null) {
+            chessGame.botDifficulty = botDifficulty;
+        }
 
         if (botDifficulty !== 'none') { blackClockContainer.style.display = 'none'; }
         else {
