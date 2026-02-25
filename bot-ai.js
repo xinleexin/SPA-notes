@@ -6,6 +6,10 @@ class BotAI {
     constructor(difficulty) {
         this.difficulty = difficulty || 'medium';
         this.pieceValues = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000 };
+        
+        // Log level configuration - only logs below or equal to this level will be shown
+        // Levels: 'error' (only errors), 'warn' (warnings + errors), 'info' (all)
+        this.logLevel = 'error';
 
         this.pawnTable = [
             [  0,  0,  0,  0,  0,  0,  0,  0],
@@ -78,6 +82,26 @@ class BotAI {
     // UTILITY FUNCTIONS - Shared across all modes
     // ============================================
 
+    // ============================================
+    // LOGGING HELPERS
+    // ============================================
+
+    logInfo(message, ...args) {
+        if (this.logLevel === 'info') {
+            console.log(message, ...args);
+        }
+    }
+
+    logWarning(message, ...args) {
+        if (this.logLevel !== 'error') {  // warn or info level
+            console.warn(message, ...args);
+        }
+    }
+
+    logError(message, ...args) {
+        console.error(message, ...args);
+    }
+
     getAllLegalMovesForColor(game, color) {
         const moves = [];
         for (let row = 0; row < 8; row++) {
@@ -85,7 +109,7 @@ class BotAI {
                 const piece = game.board.grid[row][col];
                 if (piece && piece.color === color) {
                     const legalMoves = game.gameState.getLegalMoves(game.board, row, col);
-                    console.log(`[BotAI.getAllLegalMoves] ${color} ${piece.type.toUpperCase()} at (${row},${col}) has ${legalMoves.length} legal move(s):`, 
+                    this.logInfo(`[BotAI.getAllLegalMoves] ${color} ${piece.type.toUpperCase()} at (${row},${col}) has ${legalMoves.length} legal move(s):`, 
                         JSON.stringify(legalMoves.map(m => `(${m.row},${m.col})`)));
                     for (const move of legalMoves) {
                         moves.push({ from: { row, col }, to: move, isEnPassant: !!move.isEnPassant });
@@ -93,7 +117,7 @@ class BotAI {
                 }
             }
         }
-        console.log(`[BotAI.getAllLegalMovesForColor] ${color} has ${moves.length} total legal move(s)`);
+        this.logInfo(`[BotAI.getAllLegalMovesForColor] ${color} has ${moves.length} total legal move(s)`);
         return moves;
     }
 
@@ -330,7 +354,7 @@ class BotAI {
                 const piece = clonedGame.board.grid[row][col];
                 if (piece && piece.color === botColor) {
                     if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, row, col, opponentColor)) {
-                        console.log(`    [THREAT] Bot ${piece.type} at (${row},${col}) is under attack`);
+                        this.logInfo(`    [THREAT] Bot ${piece.type} at (${row},${col}) is under attack`);
                         
                         for (let r = 0; r < 8; r++) {
                             for (let c = 0; c < 8; c++) {
@@ -343,7 +367,7 @@ class BotAI {
                                             piece: attacker,
                                             threatValue: this.pieceValues[piece.type]
                                         });
-                                        console.log(`      [THREAT] Found ${attacker.type} at (${r},${c}) threatening bot's ${piece.type}`);
+                                        this.logInfo(`      [THREAT] Found ${attacker.type} at (${r},${c}) threatening bot's ${piece.type}`);
                                     }
                                 }
                             }
@@ -374,7 +398,7 @@ class BotAI {
                     
                     if (protectionValue > this.pieceValues['p']) {
                         protectionBonus += protectionValue * 0.5;
-                        console.log(`    [PROTECT] Moving to attack ${threat.piece.type.toUpperCase()} at (${threat.from.row},${threat.from.col}) - protecting piece worth ${protectionValue}`);
+                        this.logInfo(`    [PROTECT] Moving to attack ${threat.piece.type.toUpperCase()} at (${threat.from.row},${threat.from.col}) - protecting piece worth ${protectionValue}`);
                     }
                 }
             }
@@ -558,7 +582,7 @@ class BotAI {
         const botColor = game.gameState.currentTurn === 'white' ? 'black' : 'white';
         const opponentColor = botColor === 'white' ? 'black' : 'white';
 
-        console.log('[BotAI.getRandomMove] Evaluating random safe moves...');
+        this.logInfo('[BotAI.getRandomMove] Evaluating random safe moves...');
         
         // Filter safe moves (not putting king in check)
         let safeMoves = [];
@@ -579,27 +603,27 @@ class BotAI {
             if (!kingInCheck) {
                 safeMoves.push(move);
             } else {
-                console.log(`  [CHECK] ${this.formatMovePosition(move.from)} -> ${this.formatMovePosition(move.to)}`);
+                this.logInfo(`  [CHECK] ${this.formatMovePosition(move.from)} -> ${this.formatMovePosition(move.to)}`);
             }
         }
         
         // Fallback: If no valid moves found, use ALL legal moves
         const candidates = safeMoves.length > 0 ? safeMoves : allMoves;
         
-        console.log(`[getRandomMove] Safe moves: ${safeMoves.length}/${allMoves.length}, Candidates: ${candidates.length}`);
+        this.logInfo(`[getRandomMove] Safe moves: ${safeMoves.length}/${allMoves.length}, Candidates: ${candidates.length}`);
         if (candidates.length === 0) {
-            console.warn('[getRandomMove] WARNING: No candidate moves found!');
+            this.logWarning('[getRandomMove] WARNING: No candidate moves found!');
             return null;
         }
         
         const selected = candidates[Math.floor(Math.random() * candidates.length)];
-        console.log(`[BotAI.getRandomMove] Selected: ${this.formatMovePosition(selected.from)} -> ${this.formatMovePosition(selected.to)}`);
+        this.logInfo(`[BotAI.getRandomMove] Selected: ${this.formatMovePosition(selected.from)} -> ${this.formatMovePosition(selected.to)}`);
         return { from: selected.from, to: selected.to };
     }
 
     getMediumMove(game, botColor, allMoves) {
         if (!allMoves || !Array.isArray(allMoves) || allMoves.length === 0) {
-            console.error('[BotAI.getMediumMove] Invalid or empty allMoves:', allMoves);
+            this.logError('[BotAI.getMediumMove] Invalid or empty allMoves:', allMoves);
             return null;
         }
         
@@ -608,7 +632,7 @@ class BotAI {
         
         const opponentColor = botColor === 'white' ? 'black' : 'white';
 
-        console.log('[BotAI.getMediumMove] Evaluating', allMoves.length, 'moves...');
+        this.logInfo('[BotAI.getMediumMove] Evaluating', allMoves.length, 'moves...');
         for (const move of allMoves) {
             // Clone game state safely
             const clonedGame = this.cloneGameForEvaluation(game);
@@ -627,12 +651,12 @@ class BotAI {
                 // Use common evaluation framework
                 const scores = this.calculateMoveScore(clonedGame, botColor, move.from.row, move.from.col, move.to.row, move.to.col);
                 
-                console.log(`[BotAI.getMediumMove] ${this.formatMovePosition(move.from)} -> ${this.formatMovePosition(move.to)}: score=${scores.total.toFixed(1)} ` +
+                this.logInfo(`[BotAI.getMediumMove] ${this.formatMovePosition(move.from)} -> ${this.formatMovePosition(move.to)}: score=${scores.total.toFixed(1)} ` +
                     `(base=${scores.baseScore} safety=${scores.pieceSafety} trade=${scores.tradeBonus} protection=${scores.protectionBonus})`);
                 
-                if (scores.repetitionPenalty < 0) console.log(`    [REPEATING] repetition penalty applied`);
-                if (scores.earlyKingPenalty < 0) console.log(`    [EARLY_KING] early king move penalty applied`);
-                if (scores.rookStartPenalty < 0) console.log(`    [ROOK_START] rook on start squares penalty applied`);
+                if (scores.repetitionPenalty < 0) this.logInfo(`    [REPEATING] repetition penalty applied`);
+                if (scores.earlyKingPenalty < 0) this.logInfo(`    [EARLY_KING] early king move penalty applied`);
+                if (scores.rookStartPenalty < 0) this.logInfo(`    [ROOK_START] rook on start squares penalty applied`);
 
                 // Add protection bonus to total
                 scores.total += scores.protectionBonus;
@@ -644,23 +668,23 @@ class BotAI {
                     bestScoreMoves.push(move); 
                 }
             } else {
-                console.log(`[BotAI.getMediumMove] ${this.formatMovePosition(move.from)} -> ${this.formatMovePosition(move.to)}: kingInCheck (skipped)`);
+                this.logInfo(`[BotAI.getMediumMove] ${this.formatMovePosition(move.from)} -> ${this.formatMovePosition(move.to)}: kingInCheck (skipped)`);
             }
         }
         
-        console.log(`[BotAI.getMediumMove] Best score: ${bestScore}, Options count: ${bestScoreMoves.length}`);
+        this.logInfo(`[BotAI.getMediumMove] Best score: ${bestScore}, Options count: ${bestScoreMoves.length}`);
 
         const result = bestScoreMoves.length > 0
             ? bestScoreMoves[Math.floor(Math.random() * bestScoreMoves.length)]
             : (allMoves && allMoves.length > 0) ? allMoves[0] : null;
             
-        console.log('[BotAI.getMediumMove] Result:', result ? 'valid move' : 'null');
+        this.logInfo('[BotAI.getMediumMove] Result:', result ? 'valid move' : 'null');
         return result;
     }
 
     getHardMove(game, botColor, allMoves) {
         if (!allMoves || !Array.isArray(allMoves) || allMoves.length === 0) {
-            console.error('[BotAI.getHardMove] Invalid or empty allMoves:', allMoves);
+            this.logError('[BotAI.getHardMove] Invalid or empty allMoves:', allMoves);
             return null;
         }
         
@@ -683,14 +707,15 @@ class BotAI {
                 // Calculate move score
                 const scores = this.calculateMoveScore(clonedGame, botColor, move.from.row, move.from.col, move.to.row, move.to.col);
                 
-                const overallScore = scores.total + scores.tradeBonus;
+                // Use scores.total directly (tradeBonus is already included in total)
+                const overallScore = scores.total;
                 
                 // Accept moves where gain outweighs safety loss by at least 2 pawns worth (-200)
                 if (overallScore >= -200) {
                     safeMoves.push({ move, scores });
-                    console.log(`[getHardMove] Safe: ${this.formatMovePosition(move.from)} -> ${this.formatMovePosition(move.to)}: score=${scores.total.toFixed(0)}`);
+                    this.logInfo(`[getHardMove] Safe: ${this.formatMovePosition(move.from)} -> ${this.formatMovePosition(move.to)}: score=${scores.total.toFixed(0)}`);
                 } else {
-                    console.log(`[getHardMove] Unsafe (skipped): ${this.formatMovePosition(move.from)} -> ${this.formatMovePosition(move.to)}: score=${overallScore.toFixed(0)}`);
+                    this.logInfo(`[getHardMove] Unsafe (skipped): ${this.formatMovePosition(move.from)} -> ${this.formatMovePosition(move.to)}: score=${overallScore.toFixed(0)}`);
                 }
             }
         }
@@ -722,7 +747,7 @@ class BotAI {
             let score = -oppScore + scores.total;
             if (this.isRepetition(clonedGame, tempMove)) { 
                 score -= 300; 
-                console.log(`    [REPEATING] ${this.formatMovePosition(move.from)} -> ${this.formatMovePosition(move.to)}: repetition penalty applied`);
+                this.logInfo(`    [REPEATING] ${this.formatMovePosition(move.from)} -> ${this.formatMovePosition(move.to)}: repetition penalty applied`);
             }
             
             const pieceAtDestination = clonedGame.board.grid[move.to.row][move.to.col];
@@ -730,7 +755,7 @@ class BotAI {
                 score -= 200;
             }
 
-            console.log(`[getHardMove] ${this.formatMovePosition(move.from)} -> ${this.formatMovePosition(move.to)}: total=${score.toFixed(0)} (oppScore=${-oppScore})`);
+            this.logInfo(`[getHardMove] ${this.formatMovePosition(move.from)} -> ${this.formatMovePosition(move.to)}: total=${score.toFixed(0)} (oppScore=${-oppScore})`);
 
             if (score > bestScore) {
                 bestScore = score;
@@ -825,8 +850,8 @@ class BotAI {
 
     makeMove(game) {
         const botColor = 'black';
-        console.log(`\n=== [BotAI.makeMove] Black's Turn ===`);
-        console.log('[BotAI.makeMove] Bot difficulty:', this.difficulty);
+        this.logInfo(`\n=== [BotAI.makeMove] Black's Turn ===`);
+        this.logInfo('[BotAI.makeMove] Bot difficulty:', this.difficulty);
         
         const allMoves = this.getAllLegalMovesForColor(game, botColor);
 
@@ -835,9 +860,9 @@ class BotAI {
             else { return { type: 'stalemate' }; }
         }
 
-        console.log(`[BotAI.makeMove] All ${allMoves.length} legal moves:`);
+        this.logInfo(`[BotAI.makeMove] All ${allMoves.length} legal moves:`);
         allMoves.forEach((m, i) => {
-            console.log(`  [${i}] ${this.formatMovePosition(m.from)} -> ${this.formatMovePosition(m.to)}`);
+            this.logInfo(`  [${i}] ${this.formatMovePosition(m.from)} -> ${this.formatMovePosition(m.to)}`);
         });
 
         let bestMove = null;
@@ -848,20 +873,20 @@ class BotAI {
                 break;
             case 'medium': 
                 bestMove = this.getMediumMove(game, botColor, allMoves); 
-                console.log('[BotAI.makeMove] Medium difficulty selected move');
+                this.logInfo('[BotAI.makeMove] Medium difficulty selected move');
                 break;
             case 'hard': 
                 bestMove = this.getHardMove(game, botColor, allMoves); 
-                console.log('[BotAI.makeMove] Hard difficulty selected move');
+                this.logInfo('[BotAI.makeMove] Hard difficulty selected move');
                 break;
         }
 
         if (!bestMove || !bestMove.from || !bestMove.to) {
-            console.warn('[BotAI.makeMove] No valid move found, using first available');
+            this.logWarning('[BotAI.makeMove] No valid move found, using first available');
             bestMove = allMoves[0];
         }
 
-        console.log(`[BotAI.makeMove] SELECTED: ${this.formatMovePosition(bestMove.from)} -> ${this.formatMovePosition(bestMove.to)}\n`);
+        this.logInfo(`[BotAI.makeMove] SELECTED: ${this.formatMovePosition(bestMove.from)} -> ${this.formatMovePosition(bestMove.to)}\n`);
 
         return { type: 'move', from: bestMove.from, to: bestMove.to };
     }
