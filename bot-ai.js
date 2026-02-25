@@ -9,7 +9,7 @@ class BotAI {
         
         // Log level configuration - only logs below or equal to this level will be shown
         // Levels: 'error' (only errors), 'warn' (warnings + errors), 'info' (all)
-        this.logLevel = 'error';
+        this.logLevel = 'info';
 
         this.pawnTable = [
             [  0,  0,  0,  0,  0,  0,  0,  0],
@@ -301,7 +301,10 @@ class BotAI {
                         attackers++;
                     }
                 } else if (piece && piece.color === botColor) {
-                    defenders++;
+                    // Only count as defender if this piece is actually attacking the destination square
+                    if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, destRow, destCol, piece.color)) {
+                        defenders++;
+                    }
                 }
             }
         }
