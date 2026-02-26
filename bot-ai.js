@@ -82,6 +82,25 @@ class BotAI {
     // UTILITY FUNCTIONS - Shared across all modes
     // ============================================
 
+    /**
+     * Check if a specific piece can attack a destination square
+     */
+    canPieceAttack(board, gameState, row, col, destRow, destCol) {
+        const piece = board.getPiece(row, col);
+        if (!piece || !gameState) return false;
+        
+        // Get pseudo-legal moves for this piece
+        const pseudoMoves = piece.getPseudoLegalMoves(board, gameState, row, col);
+        
+        // Check if destination is in the move list (without checking for check)
+        for (const move of pseudoMoves) {
+            if (move.row === destRow && move.col === destCol) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // ============================================
     // LOGGING HELPERS
     // ============================================
@@ -296,24 +315,29 @@ class BotAI {
         for (let row = 0; row < 8; row++) {
             for (let col = 0; col < 8; col++) {
                 const piece = clonedGame.board.grid[row][col];
+                
+                // Check if this specific opponent piece can attack the destination
                 if (piece && piece.color === opponentColor) {
-                    if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, destRow, destCol, opponentColor)) {
+                    if (this.canPieceAttack(clonedGame.board, clonedGame.gameState, row, col, destRow, destCol)) {
                         attackers++;
                     }
-                } else if (piece && piece.color === botColor) {
-                    // Only count as defender if this piece is actually attacking the destination square
-                    if (clonedGame.gameState.isSquareUnderAttack(clonedGame.board, destRow, destCol, piece.color)) {
+                } 
+                // Check if this specific defender piece can protect the destination
+                else if (piece && piece.color === botColor) {
+                    if (this.canPieceAttack(clonedGame.board, clonedGame.gameState, row, col, destRow, destCol)) {
                         defenders++;
                     }
                 }
             }
         }
         
+        // Penalty for being under attack: -100 per attacker beyond defenders
         if (attackers > defenders) {
             return -(attackers - defenders) * this.pieceValues['p'];
         } else if (attackers === 0 && defenders === 0) {
             return 0;
         }
+        // Small bonus for having more defenders than attackers
         return 5;
     }
 
@@ -468,7 +492,7 @@ class BotAI {
      * Calculate complete move score with all components
      * Returns an object with all scoring components for detailed logging
      */
-    calculateMoveScore(clonedGame, botColor, fromRow, fromCol, toRow, toCol) {
+    calculateMoveScore(clonedGame, botColor, fromRow, fromCol, toRow, toCol, targetPiece) {
         const opponentColor = botColor === 'white' ? 'black' : 'white';
         
         // Base board evaluation
@@ -478,12 +502,10 @@ class BotAI {
         const pieceSafety = this.evaluatePieceSafety(clonedGame, toRow, toCol, botColor);
         
         // Trade bonus (capture value considering defenders)
-        const targetPieceAtDestination = clonedGame.board.grid[toRow][toCol];
         let tradeBonus = 0;
-        if (targetPieceAtDestination) {
+        if (targetPiece) {
             const attackerValue = this.pieceValues[clonedGame.board.grid[fromRow][fromCol]?.type || 'p'];
-            const targetValue = this.pieceValues[targetPieceAtDestination.type];
-            const isGoodTrade = attackerValue <= targetValue;
+            const targetValue = this.pieceValues[targetPiece.type];
             
             let defenderCount = 0;
             for (let row = 0; row < 8; row++) {
@@ -496,6 +518,8 @@ class BotAI {
                     }
                 }
             }
+            
+            const isGoodTrade = attackerValue <= targetValue;
             
             if (isGoodTrade || defenderCount === 0) {
                 tradeBonus = targetValue - attackerValue;
@@ -640,6 +664,9 @@ class BotAI {
             // Clone game state safely
             const clonedGame = this.cloneGameForEvaluation(game);
             
+            // Get target piece BEFORE making the move
+            const targetPiece = clonedGame.board.grid[move.to.row][move.to.col];
+            
             // Make the test move on the clone
             this.makeMoveOnClonedGame(clonedGame, move.from, move.to);
             
@@ -652,7 +679,7 @@ class BotAI {
 
             if (!kingInCheck) {
                 // Use common evaluation framework
-                const scores = this.calculateMoveScore(clonedGame, botColor, move.from.row, move.from.col, move.to.row, move.to.col);
+                const scores = this.calculateMoveScore(clonedGame, botColor, move.from.row, move.from.col, move.to.row, move.to.col, targetPiece);
                 
                 this.logInfo(`[BotAI.getMediumMove] ${this.formatMovePosition(move.from)} -> ${this.formatMovePosition(move.to)}: score=${scores.total.toFixed(1)} ` +
                     `(base=${scores.baseScore} safety=${scores.pieceSafety} trade=${scores.tradeBonus} protection=${scores.protectionBonus})`);
@@ -697,6 +724,9 @@ class BotAI {
         for (const move of allMoves) {
             const clonedGame = this.cloneGameForEvaluation(game);
             
+            // Get target piece BEFORE making the move
+            const targetPiece = clonedGame.board.grid[move.to.row][move.to.col];
+            
             this.makeMoveOnClonedGame(clonedGame, move.from, move.to);
             
             let kingInCheck = false;
@@ -708,7 +738,7 @@ class BotAI {
             
             if (!kingInCheck) {
                 // Calculate move score
-                const scores = this.calculateMoveScore(clonedGame, botColor, move.from.row, move.from.col, move.to.row, move.to.col);
+                const scores = this.calculateMoveScore(clonedGame, botColor, move.from.row, move.from.col, move.to.row, move.to.col, targetPiece);
                 
                 // Use scores.total directly (tradeBonus is already included in total)
                 const overallScore = scores.total;
@@ -742,8 +772,8 @@ class BotAI {
             const opponentColor = botColor === 'white' ? 'black' : 'white';
             let oppScore = this.minimax(clonedGame, opponentColor, 1);
             
-            // Get full evaluation
-            const scores = candidate.scores || this.calculateMoveScore(clonedGame, botColor, move.from.row, move.from.col, move.to.row, move.to.col);
+            // Get full evaluation - pass targetPiece if available
+            const scores = candidate.scores || this.calculateMoveScore(clonedGame, botColor, move.from.row, move.from.col, move.to.row, move.to.col, null);
             
             // Create temporary move for repetition check
             const tempMove = { from: { row: move.from.row, col: move.from.col }, to: { row: move.to.row, col: move.to.col } };
