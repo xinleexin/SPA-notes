@@ -225,6 +225,62 @@ Added new helper method `generateMoveNotation()` for proper move notation genera
 
 ---
 
+## Best Practices for Using chrome-devtools-mcp
+
+### Common Errors and Solutions
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `"Missing value for required parameter 'tool_name'"` | Malformed XML tag - tool name must be inside `<tool_name>` tags | Use correct format: `<use_mcp_tool><server_name>...</server_name><tool_name>click</tool_name><arguments>{...}</arguments></use_mcp_tool>` |
+| `"The element did not become interactive within the configured timeout"` | UI in transient state (dropdown opening, dialog appearing) | Take a fresh snapshot first to see current UI state before clicking |
+| `"No such element found in the snapshot"` | Using outdated UID from previous snapshot | Always take a new snapshot after page changes or animations |
+
+### Best Practices
+
+1. **Always take a fresh snapshot before clicking**
+   - Ensures you have the latest UI state and correct UID values
+   - Essential when dialog overlays appear (they get different UIDs)
+   
+2. **Check move history to verify moves**
+   - Use `uid=71_68` heading "Move History" to confirm your moves were recorded
+   - Bot responses may take 500ms+ in hard mode
+   
+3. **Use console logs for debugging AI behavior**
+   - Check `[BotAI.makeMove]` messages to see what moves are being evaluated
+   - Look for `trade=` values to verify piece capture calculations
+
+4. **Wait for bot response before next action**
+   - Hard mode takes ~500ms; use `wait_for(["Bot (Hard) is thinking..."])`
+   - Status display shows "White's turn" or "Black's turn" during transitions
+
+5. **Handle dialog overlays properly**
+   - Many actions require confirmation dialogs
+   - Check snapshot for overlay elements with different UIDs (e.g., `uid=76_0`)
+   - Click appropriate button within the overlay ("Yes"/"No")
+
+### Coordinate System Reference
+
+| Identifier | Description |
+|------------|-------------|
+| **UID** | Unique identifier from MCP snapshot (e.g., `uid=19_3`) - used for click actions via `click(uid)` tool |
+| **Coordinate** | Chess notation like "a8", "e4" stored in button's `aria-label` attribute and `data-chessCoord` data attribute |
+| **Piece** | Optional chess piece character if present on the square |
+
+### Bot AI Debugging
+
+When testing bot moves, check console logs for:
+```
+[BotAI.makeMove] SELECTED: d7 -> d5
+[getHardMove] Safe: a8 -> b6: score=10 (trade=-440)  <- Good trade penalty applied
+```
+
+**Key indicators of correct AI behavior:**
+- High negative `trade=` values indicate bad captures are being penalized
+- `repetition` penalties should appear for cycling moves
+- Bot should avoid Knight vs Pawn trades with defenders
+
+---
+
 ## Known Limitations
 
 - Pawn promotion requires manual selection in human vs human mode
