@@ -674,6 +674,9 @@ class ChessGame {
             this.gameState.enPassantTarget = { row: Math.floor((from.row + to.row) / 2), col: from.col };
         } else { this.gameState.enPassantTarget = null; }
 
+        // Switch turn before recordMove and game over checks
+        this.gameState.switchTurn();
+
         recordMove(from, to, piece, targetPiece);
         this.lastMove = { from, to };
 
@@ -685,9 +688,6 @@ class ChessGame {
             updateStatus();
         } else if (this.gameState.isStalemate()) {
             this.gameActive = false;
-            updateStatus();
-        } else {
-            this.gameState.switchTurn();
             updateStatus();
         }
 

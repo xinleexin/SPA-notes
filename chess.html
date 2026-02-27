@@ -365,7 +365,7 @@ function recordMove(from, to, piece, captured) {
     }
     notation += columns[to.col] + rows[to.row];
 
-    const opponentColor = chessGame.gameState.currentTurn === 'white' ? 'black' : 'white';
+    const opponentColor = piece.color === 'white' ? 'black' : 'white';
 
     if (chessGame.gameState.isCheck(opponentColor)) {
         if (chessGame.gameState.isCheckmate()) { notation += '#'; }
