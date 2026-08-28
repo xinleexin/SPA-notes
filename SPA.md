@@ -243,7 +243,7 @@ When testing with chrome-devtools-mcp:
 - **Fallback patterns**: Always provide fallbacks for modern APIs (e.g., blob download for save, file input for load)
 
 ### Bot AI Architecture (Hard Mode)
-- **Shared engine**: `chess-core.js` (DOM-free: pieces, board, game state, piece-square tables) is loaded by both the main thread and the Web Worker via `importScripts`. `bot-ai.js` holds the search engine used by both paths.
+- **Shared engine**: `chess-core.js` (DOM-free: pieces, board, game state, piece-square tables) is loaded by both the main thread and the Web Worker via `importScripts`. The `BotAI` class is split across four classic scripts — `bot-ai.js` (class + constructor + shared utilities) plus three prototype-extension files (`bot-ai-evaluation.js`, `bot-ai-engine.js`, `bot-ai-moves.js`) — all loaded after `bot-ai.js` and before `chess.js`.
 - **Search engine**: `searchBestMoveIterative()` runs iterative-deepening negamax with alpha-beta pruning, MVV-LVA move ordering, threefold-repetition detection, and a time check every 64 nodes (`_checkTime`).
 - **Hard mode runs off-thread**: `bot-worker.js` deserializes the position and posts back the best move `{ from, to, depth, nodes, ms }`. The worker is a lazy singleton (`_getBotWorker()`), reused across moves, and terminated on `createNewGame()` and `beforeunload`.
 - **Synchronous fallback**: if the worker times out (2500 ms), returns an illegal move, or errors, the worker is terminated and the bot falls back to `searchBestMoveIterative()` on the main thread (depth 3 / 250 ms) — a warning is logged and the bot still moves.

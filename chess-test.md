@@ -164,7 +164,7 @@ getLegalMoves: (row, col) => chessGame.getLegalMoves(chessGame.board, row, col),
 **Worker / fallback behavior:**
 - The worker is a lazy singleton (`_getBotWorker()`), reused across moves and terminated on `createNewGame()` and `beforeunload`.
 - The main thread waits up to **2500 ms** for the worker's reply. On timeout, an illegal move, or a worker error, the worker is terminated and the bot falls back to the **synchronous** `searchBestMoveIterative()` (depth 3, 250 ms) — a warning is logged and the bot still moves.
-- `chess-core.js` (DOM-free) is loaded by both the main thread and the worker via `importScripts`; `bot-ai.js` holds the shared search engine used by both paths.
+- `chess-core.js` (DOM-free) is loaded by both the main thread and the worker; the `BotAI` class is split across `bot-ai.js` (class + constructor + shared utilities) and three prototype-extension files (`bot-ai-evaluation.js`, `bot-ai-engine.js`, `bot-ai-moves.js`), all loaded after `bot-ai.js` (`<script>` tags on the main thread, `importScripts` in the worker).
 
 ---
 
