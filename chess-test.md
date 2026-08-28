@@ -146,12 +146,25 @@ getLegalMoves: (row, col) => chessGame.getLegalMoves(chessGame.board, row, col),
 | 1 | Set difficulty to "Easy" | Bot responds with random valid move |
 | 2 | Click any white piece and make a move | After 500ms delay, bot makes a response |
 
-### Medium/Hard Mode (Strategic Moves)
+### Medium Mode (Strategic Scoring, main thread)
 
 | Step | Action | Expected Result |
 |------|--------|-----------------|
-| 1 | Set difficulty to "Medium" or "Hard" | Bot responds with strategic move based on minimax algorithm |
-| 2 | Observe console logs | `[BotAI.makeMove]` messages show evaluation of moves |
+| 1 | Set difficulty to "Medium" | Bot responds with a move from `getMediumMove()` (per-move `calculateMoveScore()`, run on the main thread) |
+| 2 | Observe console logs | Console stays quiet (BotAI `logLevel` defaults to `'warn'` — no per-node spam); a sensible developing/capturing move is played |
+
+### Hard Mode (Iterative-Deepening Search in a Web Worker)
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Set difficulty to "Hard" | Bot runs `searchBestMoveIterative()` (negamax + alpha-beta, depth 4, 400 ms time cap) inside a Web Worker (`bot-worker.js`) |
+| 2 | Observe console logs | Console stays quiet; the applied move is tagged `Executing bot move (depth=N, Xms)` (only the worker path sets the depth tag) |
+| 3 | Verify off-thread | `chessGame._botWorker` is an active `Worker` and the UI stays responsive during the search |
+
+**Worker / fallback behavior:**
+- The worker is a lazy singleton (`_getBotWorker()`), reused across moves and terminated on `createNewGame()` and `beforeunload`.
+- The main thread waits up to **2500 ms** for the worker's reply. On timeout, an illegal move, or a worker error, the worker is terminated and the bot falls back to the **synchronous** `searchBestMoveIterative()` (depth 3, 250 ms) — a warning is logged and the bot still moves.
+- `chess-core.js` (DOM-free) is loaded by both the main thread and the worker via `importScripts`; `bot-ai.js` holds the shared search engine used by both paths.
 
 ---
 

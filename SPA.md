@@ -198,7 +198,7 @@ When testing with chrome-devtools-mcp:
 1. **Create New Game**: Validate board is loaded correctly with all pieces in starting positions
 2. **No Bot Mode (Human vs Human)**: Test white moves, black moves, timer display, and move history  
 3. **Easy Bot Mode**: Test white moves followed by random bot response
-4. **Hard Bot Mode**: Test white moves followed by strategic minimax bot response
+4. **Hard Bot Mode**: Test white moves followed by the iterative-deepening search engine (runs in a Web Worker; falls back to synchronous on worker failure/timeout)
 
 #### Key MCP-Ready Elements
 | Element | ID | Purpose |
@@ -241,6 +241,13 @@ When testing with chrome-devtools-mcp:
 - **Auto-save vs Manual save**: Separate logic - `autoSave()` for silent localStorage persistence, `saveGame()` for user-triggered file export
 - **Async functions**: Use `async`/`await` for file system operations (File System Access API)
 - **Fallback patterns**: Always provide fallbacks for modern APIs (e.g., blob download for save, file input for load)
+
+### Bot AI Architecture (Hard Mode)
+- **Shared engine**: `chess-core.js` (DOM-free: pieces, board, game state, piece-square tables) is loaded by both the main thread and the Web Worker via `importScripts`. `bot-ai.js` holds the search engine used by both paths.
+- **Search engine**: `searchBestMoveIterative()` runs iterative-deepening negamax with alpha-beta pruning, MVV-LVA move ordering, threefold-repetition detection, and a time check every 64 nodes (`_checkTime`).
+- **Hard mode runs off-thread**: `bot-worker.js` deserializes the position and posts back the best move `{ from, to, depth, nodes, ms }`. The worker is a lazy singleton (`_getBotWorker()`), reused across moves, and terminated on `createNewGame()` and `beforeunload`.
+- **Synchronous fallback**: if the worker times out (2500 ms), returns an illegal move, or errors, the worker is terminated and the bot falls back to `searchBestMoveIterative()` on the main thread (depth 3 / 250 ms) — a warning is logged and the bot still moves.
+- **Quiet logging**: `BotAI.logLevel` defaults to `'warn'` so the console stays clean (no per-node spam). Set `botAI.logLevel = 'info'` to restore verbose debug logging. The applied hard move is tagged `(depth=N, Xms)` in the console.
 
 ### CSS Optimization
 - Use `clamp()` for responsive font sizes

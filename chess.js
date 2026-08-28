@@ -1,354 +1,9 @@
 // ============================================
-// CHESS GAME SPA - Core Classes
+// CHESS GAME SPA - Game + UI
+// Core engine classes (Piece, ChessBoard, GameState, createPiece) now live in
+// chess-core.js, which is loaded before this file. This file keeps the ChessGame
+// class and all DOM/UI logic.
 // ============================================
-
-class Piece {
-    constructor(type, color) { this.type = type; this.color = color; }
-    getType() { return this.type; }
-    getColor() { return this.color; }
-    isValidPosition(row, col) { return row >= 0 && row < 8 && col >= 0 && col < 8; }
-    getPseudoLegalMoves(board, gameState, row, col) {
-        throw new Error('getPseudoLegalMoves must be implemented by subclass');
-    }
-}
-
-class Pawn extends Piece {
-    constructor(color) { super('p', color); }
-    getPseudoLegalMoves(board, gameState, row, col) {
-        const moves = [];
-        const direction = this.color === 'white' ? -1 : 1;
-        const startRow = this.color === 'white' ? 6 : 1;
-
-        if (board.isEmpty(row + direction, col)) {
-            moves.push({ row: row + direction, col: col });
-            if (row === startRow && board.isEmpty(row + direction * 2, col)) {
-                moves.push({ row: row + direction * 2, col: col, isDoublePawn: true });
-            }
-        }
-
-        const captureOffsets = [-1, 1];
-        for (const offset of captureOffsets) {
-            if (board.isOpponentPiece(row + direction, col + offset, this.color)) {
-                moves.push({ row: row + direction, col: col + offset });
-            } else if (gameState.enPassantTarget &&
-                       gameState.enPassantTarget.row === row + direction &&
-                       gameState.enPassantTarget.col === col + offset) {
-                moves.push({ row: row + direction, col: col + offset, isEnPassant: true });
-            }
-        }
-        return moves;
-    }
-}
-
-class Knight extends Piece {
-    constructor(color) { super('n', color); }
-    getPseudoLegalMoves(board, gameState, row, col) {
-        const moves = [];
-        const knightOffsets = [
-            { dr: -2, dc: -1 }, { dr: -2, dc: 1 },
-            { dr: -1, dc: -2 }, { dr: -1, dc: 2 },
-            { dr: 1, dc: -2 }, { dr: 1, dc: 2 },
-            { dr: 2, dc: -1 }, { dr: 2, dc: 1 }
-        ];
-        for (const offset of knightOffsets) {
-            const targetRow = row + offset.dr;
-            const targetCol = col + offset.dc;
-            if (this.isValidPosition(targetRow, targetCol)) {
-                if (board.isEmpty(targetRow, targetCol) || board.isOpponentPiece(targetRow, targetCol, this.color)) {
-                    moves.push({ row: targetRow, col: targetCol });
-                }
-            }
-        }
-        return moves;
-    }
-}
-
-class SlidingPiece extends Piece {
-    constructor(type, color) { super(type, color); }
-    getSlidingMoves(board, gameState, row, col, directions) {
-        const moves = [];
-        for (const d of directions) {
-            let r = row + d.dr, c = col + d.dc;
-            while (this.isValidPosition(r, c)) {
-                if (board.isEmpty(r, c)) { moves.push({ row: r, col: c }); }
-                else if (board.isOpponentPiece(r, c, this.color)) {
-                    moves.push({ row: r, col: c });
-                    break;
-                } else { break; }
-                r += d.dr; c += d.dc;
-            }
-        }
-        return moves;
-    }
-}
-
-class Rook extends SlidingPiece { constructor(color) { super('r', color); }
-    getPseudoLegalMoves(board, gameState, row, col) {
-        const directions = [{ dr: -1, dc: 0 }, { dr: 1, dc: 0 }, { dr: 0, dc: -1 }, { dr: 0, dc: 1 }];
-        return this.getSlidingMoves(board, gameState, row, col, directions);
-    }
-}
-class Bishop extends SlidingPiece { constructor(color) { super('b', color); }
-    getPseudoLegalMoves(board, gameState, row, col) {
-        const directions = [{ dr: -1, dc: -1 }, { dr: -1, dc: 1 }, { dr: 1, dc: -1 }, { dr: 1, dc: 1 }];
-        return this.getSlidingMoves(board, gameState, row, col, directions);
-    }
-}
-class Queen extends SlidingPiece { constructor(color) { super('q', color); }
-    getPseudoLegalMoves(board, gameState, row, col) {
-        const directions = [{ dr: -1, dc: 0 }, { dr: 1, dc: 0 }, { dr: 0, dc: -1 }, { dr: 0, dc: 1 },
-                            { dr: -1, dc: -1 }, { dr: -1, dc: 1 }, { dr: 1, dc: -1 }, { dr: 1, dc: 1 }];
-        return this.getSlidingMoves(board, gameState, row, col, directions);
-    }
-}
-
-class King extends Piece {
-    constructor(color) { super('k', color); }
-    getPseudoLegalMoves(board, gameState, row, col) {
-        const moves = [];
-        for (let dr = -1; dr <= 1; dr++) {
-            for (let dc = -1; dc <= 1; dc++) {
-                if (dr === 0 && dc === 0) continue;
-                const targetRow = row + dr, targetCol = col + dc;
-                if (this.isValidPosition(targetRow, targetCol)) {
-                    if (board.isEmpty(targetRow, targetCol) || board.isOpponentPiece(targetRow, targetCol, this.color)) {
-                        moves.push({ row: targetRow, col: targetCol });
-                    }
-                }
-            }
-        }
-
-        const colorKey = this.color === 'white' ? 'whiteKingMoved' : 'blackKingMoved';
-        if (!gameState.castlingRights[colorKey] &&
-            !gameState.isSquareUnderAttack(board, row, col, this.color === 'white' ? 'black' : 'white')) {
-            const kingsideRookMoved = this.color === 'white'
-                ? gameState.castlingRights.whiteRookKingSideMoved
-                : gameState.castlingRights.blackRookKingSideMoved;
-            if (!kingsideRookMoved && board.isEmpty(row, 5) && board.isEmpty(row, 6)) {
-                if (!gameState.isSquareUnderAttack(board, row, 5, this.color === 'white' ? 'black' : 'white') &&
-                    !gameState.isSquareUnderAttack(board, row, 6, this.color === 'white' ? 'black' : 'white')) {
-                    moves.push({ row: row, col: 6, isCastling: 'kingside' });
-                }
-            }
-
-            const queensideRookMoved = this.color === 'white'
-                ? gameState.castlingRights.whiteRookQueenSideMoved
-                : gameState.castlingRights.blackRookQueenSideMoved;
-            if (!queensideRookMoved && board.isEmpty(row, 1) && board.isEmpty(row, 2) && board.isEmpty(row, 3)) {
-                if (!gameState.isSquareUnderAttack(board, row, 3, this.color === 'white' ? 'black' : 'white') &&
-                    !gameState.isSquareUnderAttack(board, row, 2, this.color === 'white' ? 'black' : 'white')) {
-                    moves.push({ row: row, col: 2, isCastling: 'queenside' });
-                }
-            }
-        }
-        return moves;
-    }
-}
-
-function createPiece(type, color) {
-    switch (type) {
-        case 'p': return new Pawn(color);
-        case 'n': return new Knight(color);
-        case 'b': return new Bishop(color);
-        case 'r': return new Rook(color);
-        case 'q': return new Queen(color);
-        case 'k': return new King(color);
-        default: throw new Error(`Unknown piece type: ${type}`);
-    }
-}
-
-class ChessBoard {
-    constructor() { this.grid = Array(8).fill(null).map(() => Array(8).fill(null)); }
-    initializeBoard() {
-        for (let row = 0; row < 8; row++) { for (let col = 0; col < 8; col++) { this.grid[row][col] = null; } }
-        this.grid[0] = [new Rook('black'), new Knight('black'), new Bishop('black'),
-                        new Queen('black'), new King('black'), new Bishop('black'),
-                        new Knight('black'), new Rook('black')];
-        for (let col = 0; col < 8; col++) { this.grid[1][col] = new Pawn('black'); }
-        for (let col = 0; col < 8; col++) { this.grid[6][col] = new Pawn('white'); }
-        this.grid[7] = [new Rook('white'), new Knight('white'), new Bishop('white'),
-                        new Queen('white'), new King('white'), new Bishop('white'),
-                        new Knight('white'), new Rook('white')];
-    }
-    getPiece(row, col) { return this.isValidPosition(row, col) ? this.grid[row][col] : null; }
-    setPiece(row, col, piece) { if (this.isValidPosition(row, col)) { this.grid[row][col] = piece; } }
-    isEmpty(row, col) { return !this.getPiece(row, col); }
-    isValidPosition(row, col) { return row >= 0 && row < 8 && col >= 0 && col < 8; }
-    isOwnPiece(row, col, color) { const piece = this.getPiece(row, col); return piece && piece.color === color; }
-    isOpponentPiece(row, col, color) { const piece = this.getPiece(row, col); return piece && piece.color !== color; }
-    copyGrid() { return this.grid.map(row => row.map(piece => piece ? { type: piece.type, color: piece.color } : null)); }
-}
-
-class GameState {
-    constructor(board) {
-        this.board = board;
-        this.currentTurn = 'white';
-        this.enPassantTarget = null;
-        this.castlingRights = {
-            whiteKingMoved: false, blackKingMoved: false,
-            whiteRookKingSideMoved: false, whiteRookQueenSideMoved: false,
-            blackRookKingSideMoved: false, blackRookQueenSideMoved: false
-        };
-        this.lastMove = null;
-        this.whiteKingPos = { row: 7, col: 4 };
-        this.blackKingPos = { row: 0, col: 4 };
-    }
-    switchTurn() { this.currentTurn = this.currentTurn === 'white' ? 'black' : 'white'; }
-    findKing(color) {
-        for (let row = 0; row < 8; row++) {
-            for (let col = 0; col < 8; col++) {
-                const piece = this.board.grid[row][col];
-                if (piece && piece.type === 'k' && piece.color === color) { return { row, col }; }
-            }
-        }
-        return null;
-    }
-    isSquareUnderAttack(board, row, col, attackerColor) {
-        const pawnDirection = attackerColor === 'white' ? -1 : 1;
-        if (board.isValidPosition(row + pawnDirection, col - 1)) {
-            const piece = board.getPiece(row + pawnDirection, col - 1);
-            if (piece && piece.color === attackerColor && piece.type === 'p') return true;
-        }
-        if (board.isValidPosition(row + pawnDirection, col + 1)) {
-            const piece = board.getPiece(row + pawnDirection, col + 1);
-            if (piece && piece.color === attackerColor && piece.type === 'p') return true;
-        }
-
-        const knightMoves = [
-            { dr: -2, dc: -1 }, { dr: -2, dc: 1 },
-            { dr: -1, dc: -2 }, { dr: -1, dc: 2 },
-            { dr: 1, dc: -2 }, { dr: 1, dc: 2 },
-            { dr: 2, dc: -1 }, { dr: 2, dc: 1 }
-        ];
-        for (const move of knightMoves) {
-            if (board.isValidPosition(row + move.dr, col + move.dc)) {
-                const piece = board.getPiece(row + move.dr, col + move.dc);
-                if (piece && piece.color === attackerColor && piece.type === 'n') return true;
-            }
-        }
-
-        for (let dr = -1; dr <= 1; dr++) {
-            for (let dc = -1; dc <= 1; dc++) {
-                if (dr === 0 && dc === 0) continue;
-                if (board.isValidPosition(row + dr, col + dc)) {
-                    const piece = board.getPiece(row + dr, col + dc);
-                    if (piece && piece.color === attackerColor && piece.type === 'k') return true;
-                }
-            }
-        }
-
-        const directions = [
-            { dr: -1, dc: 0 }, { dr: 1, dc: 0 },
-            { dr: 0, dc: -1 }, { dr: 0, dc: 1 },
-            { dr: -1, dc: -1 }, { dr: -1, dc: 1 },
-            { dr: 1, dc: -1 }, { dr: 1, dc: 1 }
-        ];
-        for (let i = 0; i < directions.length; i++) {
-            const d = directions[i];
-            let r = row + d.dr, c = col + d.dc;
-            let distance = 0;
-            while (board.isValidPosition(r, c)) {
-                distance++;
-                const piece = board.getPiece(r, c);
-                if (piece) {
-                    if (piece.color === attackerColor) {
-                        const isRookLike = i < 4;
-                        if (piece.type === 'q' || (isRookLike && piece.type === 'r') ||
-                            (!isRookLike && piece.type === 'b')) return true;
-                        if (piece.type === 'k' && distance === 1) return true;
-                    }
-                    break;
-                }
-                r += d.dr; c += d.dc;
-            }
-        }
-        return false;
-    }
-    getPseudoLegalMoves(row, col) {
-        const piece = this.board.getPiece(row, col);
-        if (!piece || piece.color !== this.currentTurn) return [];
-        return piece.getPseudoLegalMoves(this.board, this, row, col);
-    }
-    getLegalMoves(board, row, col) {
-        const piece = board.getPiece(row, col);
-        if (!piece || piece.color !== this.currentTurn) return [];
-        const pseudoMoves = this.getPseudoLegalMoves(row, col);
-        const legalMoves = [];
-        const opponentColor = this.currentTurn === 'white' ? 'black' : 'white';
-
-        for (const move of pseudoMoves) {
-            const savedTarget = board.grid[move.row][move.col];
-            const savedSource = board.grid[row][col];
-
-            board.setPiece(move.row, move.col, savedSource);
-            this.board.setPiece(row, col, null);
-
-            let originalKingPos = null;
-            if (piece.type === 'k') {
-                originalKingPos = piece.color === 'white' ? this.whiteKingPos : this.blackKingPos;
-            }
-
-            const kingInCheck = this.isSquareUnderAttack(
-                this.board,
-                piece.type === 'k' ? move.row : (piece.color === 'white' ? this.whiteKingPos.row : this.blackKingPos.row),
-                piece.type === 'k' ? move.col : (piece.color === 'white' ? this.whiteKingPos.col : this.blackKingPos.col),
-                opponentColor
-            );
-
-            this.board.setPiece(row, col, savedSource);
-            this.board.setPiece(move.row, move.col, savedTarget);
-
-            if (originalKingPos) {
-                piece.color === 'white' ? this.whiteKingPos = originalKingPos : this.blackKingPos = originalKingPos;
-            }
-
-            let validCastling = true;
-            if (move.isCastling === 'kingside') {
-                const backRow = piece.color === 'white' ? 7 : 0;
-                validCastling = !this.isSquareUnderAttack(this.board, backRow, 5, opponentColor);
-            } else if (move.isCastling === 'queenside') {
-                const backRow = piece.color === 'white' ? 7 : 0;
-                validCastling = !this.isSquareUnderAttack(this.board, backRow, 3, opponentColor);
-            }
-
-            if (!kingInCheck && validCastling) { legalMoves.push(move); }
-        }
-        return legalMoves;
-    }
-    isCheck(color) {
-        const kingPos = this.findKing(color);
-        if (!kingPos) return false;
-        const opponentColor = color === 'white' ? 'black' : 'white';
-        return this.isSquareUnderAttack(this.board, kingPos.row, kingPos.col, opponentColor);
-    }
-    
-    hasLegalMoves(board, color) {
-        for (let row = 0; row < 8; row++) {
-            for (let col = 0; col < 8; col++) {
-                const piece = board.getPiece(row, col);
-                if (piece && piece.color === color) { 
-                    // Temporarily set currentTurn to check moves for this color
-                    const originalTurn = this.currentTurn;
-                    this.currentTurn = color;
-                    const legalMoves = this.getLegalMoves(board, row, col);
-                    this.currentTurn = originalTurn;  // Restore
-                    if (legalMoves.length > 0) return true;
-                }
-            }
-        }
-        return false;
-    }
-    
-    isCheckmate() { 
-        const currentColor = this.currentTurn;
-        return this.isCheck(currentColor) && !this.hasLegalMoves(this.board, currentColor);
-    }
-    
-    isStalemate() { 
-        const currentColor = this.currentTurn;
-        return !this.isCheck(currentColor) && !this.hasLegalMoves(this.board, currentColor);
-    }
-}
 
 class MCPDialog {
     constructor() { this.overlay = null; this.container = null; this.resolvePromise = null; this.rejectPromise = null; }
@@ -429,6 +84,10 @@ class ChessGame {
         this.gameState = new GameState(this.board);
         this.dialog = new MCPDialog();
         this.botAI = null;
+        this._botWorker = null;
+        if (typeof window !== 'undefined') {
+            window.addEventListener('beforeunload', () => { this._terminateBotWorker(); });
+        }
         this.selectedSquare = null;
         this.legalMoves = [];
         this.moveHistory = [];
@@ -453,6 +112,7 @@ class ChessGame {
     async createNewGame() {
         console.log('[ChessGame.createNewGame] Starting...');
         try {
+            this._terminateBotWorker();
             localStorage.removeItem('chessGame');
             this.board.initializeBoard();
             this.gameState = new GameState(this.board);
@@ -471,6 +131,82 @@ class ChessGame {
             renderMoveHistory();
             updateStatus();
         } catch (e) { console.error('[ChessGame.createNewGame] Error:', e); }
+    }
+
+    // ============================================
+    // Bot AI Web Worker (off-thread 'hard' search)
+    // ============================================
+
+    _getBotWorker() {
+        if (this._botWorker) return this._botWorker;
+        this._botWorker = new Worker('bot-worker.js');
+        this._botWorker.onerror = (e) => {
+            console.error('[ChessGame] Bot worker error:', e.message);
+            this._botWorker = null;
+        };
+        return this._botWorker;
+    }
+
+    _terminateBotWorker() {
+        if (this._botWorker) {
+            try { this._botWorker.terminate(); } catch (e) { /* ignore */ }
+            this._botWorker = null;
+        }
+    }
+
+    /**
+     * Ask the off-thread worker for the best 'hard' move. Resolves to
+     * { type:'move', from, to, _depth, _ms, _nodes } or rejects (worker unavailable,
+     * timeout, or illegal move) so the caller can fall back to the synchronous engine.
+     */
+    _searchWithWorker() {
+        return new Promise((resolve, reject) => {
+            let worker;
+            try { worker = this._getBotWorker(); } catch (e) { reject(e); return; }
+            if (!worker) { reject(new Error('worker unavailable')); return; }
+
+            const self = this;
+            const payload = {
+                cmd: 'search',
+                board: this.board.copyGrid(),
+                turn: this.gameState.currentTurn,
+                castlingRights: this.gameState.castlingRights,
+                enPassantTarget: this.gameState.enPassantTarget,
+                whiteKingPos: this.gameState.whiteKingPos,
+                blackKingPos: this.gameState.blackKingPos,
+                moveHistory: this.moveHistory,
+                maxDepth: 4,
+                timeBudgetMs: 400
+            };
+
+            const timeout = setTimeout(() => {
+                self._terminateBotWorker();
+                reject(new Error('worker search timed out'));
+            }, 2500);
+
+            const onMessage = (ev) => {
+                const d = ev.data;
+                worker.removeEventListener('message', onMessage);
+                clearTimeout(timeout);
+                if (d && d.cmd === 'result' && d.from && d.to) {
+                    // Validate the move is actually legal before applying it.
+                    const legal = self.gameState.getLegalMoves(self.board, d.from.row, d.from.col);
+                    const ok = legal.some(m => m.row === d.to.row && m.col === d.to.col);
+                    if (ok) {
+                        resolve({ type: 'move', from: d.from, to: d.to, _depth: d.depth, _ms: d.ms, _nodes: d.nodes });
+                    } else {
+                        self._terminateBotWorker();
+                        reject(new Error('worker returned illegal move'));
+                    }
+                } else {
+                    self._terminateBotWorker();
+                    reject(new Error((d && d.message) ? d.message : 'no result from worker'));
+                }
+            };
+
+            worker.addEventListener('message', onMessage);
+            worker.postMessage(payload);
+        });
     }
 
     async resetToStartingPosition() {
@@ -703,19 +439,30 @@ class ChessGame {
         const currentDifficulty = initialBotDifficulties[currentBotDiffSelect?.value] || 'medium';
         
         if (currentDifficulty !== 'none' && this.gameState.currentTurn === 'black' && this.gameActive) {
-            // Create a new BotAI instance with the current difficulty to ensure it uses updated settings
-            const bot = new BotAI(currentDifficulty);
-            
             const self = this;
+            const useWorker = currentDifficulty === 'hard' && typeof Worker !== 'undefined';
             setTimeout(() => {
-                const result = bot.makeMove(self);
-                console.log('[ChessGame.executeMove] Bot result:', result);
-
-                if (result.type === 'checkmate') { this.gameActive = false; updateStatus(); }
-                else if (result.type === 'stalemate') { this.gameActive = false; updateStatus(); }
-                else if (result.from && result.to) {
-                    console.log('[ChessGame.executeMove] Executing bot move');
-                    self.executeMove(result.from, result.to);
+                const finish = (result) => {
+                    console.log('[ChessGame.executeMove] Bot result:', result);
+                    if (result.type === 'checkmate') { self.gameActive = false; updateStatus(); }
+                    else if (result.type === 'stalemate') { self.gameActive = false; updateStatus(); }
+                    else if (result.from && result.to) {
+                        const detail = (result._depth !== undefined) ? ` (depth=${result._depth}, ${result._ms}ms)` : '';
+                        console.log('[ChessGame.executeMove] Executing bot move' + detail);
+                        self.executeMove(result.from, result.to);
+                    }
+                };
+                const runSynchronous = () => {
+                    const bot = new BotAI(currentDifficulty);
+                    finish(bot.makeMove(self));
+                };
+                if (useWorker) {
+                    self._searchWithWorker().then(finish).catch((e) => {
+                        console.warn('[ChessGame.executeMove] Worker search failed, falling back:', (e && e.message) || e);
+                        runSynchronous();
+                    });
+                } else {
+                    runSynchronous();
                 }
             }, 500);
         }
