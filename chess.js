@@ -247,21 +247,23 @@ class ChessGame {
             return;
         }
         
+        // Pre-validate every move that would be undone so the undo is all-or-nothing
+        // (canUndo() already gates the button, but undoLastMove() can be called directly)
+        for (let i = this.moveHistory.length - minMovesNeeded; i < this.moveHistory.length; i++) {
+            const move = this.moveHistory[i];
+            if (move.piece.type === 'k' || move.piece.type === 'r' ||
+                move.to.isCastling === 'kingside' || move.to.isCastling === 'queenside') {
+                console.log('[ChessGame.undoLastMove] King/rook/castling in moves to undo - aborting');
+                return;
+            }
+        }
+        
         // Undo the last move(s)
         let undoneCount = 0;
         while (undoneCount < minMovesNeeded && this.moveHistory.length > 0) {
             const lastMove = this.moveHistory.pop();
             const piece = lastMove.piece;
             const targetPiece = lastMove.captured || null;
-            
-            // Check for castling - disable undo if any castling occurred
-            const movedToCastling = lastMove.to.isCastling === 'kingside' || lastMove.to.isCastling === 'queenside';
-            
-            if (piece.type === 'k' || piece.type === 'r' || movedToCastling) {
-                console.log('[ChessGame.undoLastMove] Castling detected - cannot undo, restoring move');
-                this.moveHistory.push(lastMove);  // Restore the move
-                return;  // Don't allow castling to be undone
-            }
             
             // Move piece back to source square
             this.board.grid[lastMove.from.row][lastMove.from.col] = piece;
@@ -309,6 +311,7 @@ class ChessGame {
         await autoSave();
         renderBoard();
         renderMoveHistory();  // Update move history display
+        updateStatus();  // Refresh status (e.g. clears a stale "Checkmate!" banner after take-back)
     }
 
     canUndo() {
@@ -321,29 +324,27 @@ class ChessGame {
             }
         }
         
-        console.log('[ChessGame.canUndo] Checking...');
-        console.log('  moveHistory.length:', this.moveHistory.length);
-        
         if (this.moveHistory.length === 0) { 
             console.log('  NO: no moves'); return false; 
         }
         
-        const lastMove = this.moveHistory[this.moveHistory.length - 1];
-        console.log('  lastMove.piece.type:', lastMove.piece.type, 'isCastling:', lastMove.to.isCastling);
-        
-        // Check for castling or rook/knight moves that affect rights
-        if (lastMove.piece.type === 'k' || lastMove.piece.type === 'r') { 
-            console.log('  NO: king/rook moved'); return false; 
-        }
-        if (lastMove.to.isCastling === 'kingside' || lastMove.to.isCastling === 'queenside') { 
-            console.log('  NO: castling move'); return false; 
-        }
-        
-        // For bot games, check if we have at least 2 moves to undo
+        // For bot games, the undo covers the bot's move AND the human's previous move,
+        // so every move that would be undone must be undoable (no king/rook moves or castling)
         const isBotGame = this.botAI !== null && this.botDifficulty !== 'none';
-        console.log('  isBotGame:', isBotGame);
-        if (isBotGame && this.moveHistory.length < 2) { 
-            console.log('  NO: bot game but not enough moves'); return false; 
+        const movesToCheck = isBotGame ? 2 : 1;
+        console.log('[ChessGame.canUndo] Checking...', this.moveHistory.length, 'moves (need', movesToCheck + ')');
+        
+        if (this.moveHistory.length < movesToCheck) { 
+            console.log('  NO: not enough moves'); return false; 
+        }
+        
+        for (let i = this.moveHistory.length - movesToCheck; i < this.moveHistory.length; i++) {
+            const move = this.moveHistory[i];
+            if (move.piece.type === 'k' || move.piece.type === 'r' ||
+                move.to.isCastling === 'kingside' || move.to.isCastling === 'queenside') {
+                console.log('  NO: king/rook/castling move at index', i);
+                return false;
+            }
         }
         
         console.log('  YES: can undo');
@@ -444,8 +445,8 @@ class ChessGame {
             setTimeout(() => {
                 const finish = (result) => {
                     console.log('[ChessGame.executeMove] Bot result:', result);
-                    if (result.type === 'checkmate') { self.gameActive = false; updateStatus(); }
-                    else if (result.type === 'stalemate') { self.gameActive = false; updateStatus(); }
+                    if (result.type === 'checkmate') { self.gameActive = false; updateStatus(); updateTakeBackButton(); }
+                    else if (result.type === 'stalemate') { self.gameActive = false; updateStatus(); updateTakeBackButton(); }
                     else if (result.from && result.to) {
                         const detail = (result._depth !== undefined) ? ` (depth=${result._depth}, ${result._ms}ms)` : '';
                         console.log('[ChessGame.executeMove] Executing bot move' + detail);
