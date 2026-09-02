@@ -5,6 +5,39 @@ This document contains quick test steps using `chrome-devtools-mcp` tools to ver
 
 ## **Important notice**
 Use `Click("UID")` tool from `chrome-devtools-mcp` to select and move pieces on the chessboard.
+
+---
+
+## File Structure & Architecture (2026 UI refactor)
+
+The chess UI was split out of `chess.html`'s ~1000-line inline `<script>` into small classic global scripts (no build, no ES modules). `chess.html` is now ~60 lines of DOM + script/CSS wiring only. This keeps the Web Worker and the MCP test API intact.
+
+**Load order** (bottom of `chess.html`) — must be preserved:
+
+```
+chess-core.js → bot-ai.js → bot-ai-evaluation.js → bot-ai-engine.js → bot-ai-moves.js
+  → chess.js → chess-ui-render.js → chess-ui-persistence.js → chess-ui.js
+```
+
+| File | What lives there |
+|------|------------------|
+| `chess.css` | All board/layout/panel styling (`#mcp-board-grid-8x8`, `.selected`, `.move-indicator`, panels, clock) |
+| `chess-core.js` | DOM-free `Piece`/`createPiece`, `ChessBoard`, `GameState`, piece-square tables (also loaded in the Worker via `importScripts`) |
+| `bot-ai.js` + 3 extension files | `BotAI` class split across a base file + `bot-ai-evaluation.js` / `bot-ai-engine.js` / `bot-ai-moves.js` |
+| `bot-worker.js` | Web Worker for hard-mode iterative-deepening search (off-thread); lazy singleton, terminated on new game / `beforeunload` |
+| `chess.js` | `ChessGame` class — `init`, `executeMove`, `createNewGame`, `undoLastMove`, bot + Worker orchestration |
+| `chess-ui-render.js` | Board/status/clock rendering: `initRenderBoard`, `updateRenderBoard`, `renderBoard`, `updateStatus`, `renderMoveHistory`, `updateTakeBackButton`, `startTimer`/`stopTimer`/`updateTimerDisplay`, `calculateTimeColor` |
+| `chess-ui-persistence.js` | `autoSave`, `saveGame`, `loadGame`, `loadFromLocalStorage`, `loadFromSaved`, and the single serializer `getGameState()` |
+| `chess-ui.js` | Controller + init: `selectSquare`, `deselectAll`, `recordMove`, `setupEventListeners`, `init`/`initAsync`, `getCurrentDifficulty()`, and `window.chessMCP` |
+
+**Testing anchors:**
+- **MCP API** is `window.chessMCP` (NOT the older `chessTestAPI` name used in some bug-fix notes below): `clickSquare(row,col)`, `executeMove(fr,fc,tr,tc)`, `getBoardState()`, `getCurrentTurn()`, `getLegalMovesForSquare(row,col)`. `chessGame` is also a `window` global (`window.chessGame`).
+- **localStorage key** for auto-save/restore is `'chessGame'`.
+- **Keyboard shortcuts** (wired in `setupEventListeners`): `Ctrl/Cmd+S` save, `Ctrl/Cmd+L` load, `Ctrl/Cmd+N` new game, `Esc` deselect.
+- **Board squares** are `<button aria-label="<coord>">` inside `#mcp-board-grid-8x8` (row 0 = rank 8 … row 7 = rank 1).
+- `initAsync()` (last script) creates `window.board` and `window.chessGame`, then `init()` → `chessGame.init(botDifficulty)` → `loadFromLocalStorage()` restores any saved game.
+- **Take Back** (`chessGame.undoLastMove()`): undoes **1 half-move** in human mode, **2 half-moves** in bot mode; aborts (all-or-nothing) if a king/rook/castling move is involved. `updateTakeBackButton()` gates the button via `canUndo()`.
+
 ---
 
 ## Prerequisites: Starting HTTP Server
@@ -112,6 +145,43 @@ Each square button in the chess grid has three key identifiers:
 - Black responds after white's move
 - Timer starts for human vs human mode
 - Move history displays alternating turns
+
+---
+
+## Test Scenario 3: Auto-Save & Restore (localStorage)
+
+### Prerequisites
+- Start HTTP server using `start-server.ps1`
+- Navigate to the game
+- Set bot to **"No Bot (Human vs Human)"** so the clock is shown (persistence also stores `botDifficulty` and re-syncs the dropdown on load)
+
+### How persistence works (code reference)
+- `autoSave()` (in `chess-ui-persistence.js`, called after every `executeMove`) serializes the game via `getGameState()` and writes it to `localStorage` under key `'chessGame'`.
+- On load, `initAsync() → init() → loadFromLocalStorage()`: if a saved game exists it calls `loadFromSaved()` + re-renders; otherwise it starts fresh with `chessGame.init(botDifficulty)`.
+- `loadFromSaved()` restores the board grid, `currentTurn`, castling rights, en-passant target, king positions, `selectedSquare`, `legalMoves`, `moveHistory`, `gameActive`, `lastMove`, `botDifficulty` (syncs the dropdown) and clock `currentTime`, then calls `stopTimer()` + `updateTakeBackButton()`.
+
+### Test Steps
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Play `e4` (click e2 then e4) | White pawn on e4; `localStorage['chessGame']` written (board shows pawn on e4, `currentTurn: 'black'`) |
+| 2 | Play `d5` (click d7 then d5) | Black pawn on d5; move history shows "1. e4 d5" |
+| 3 | Reload the page (`navigate_page` reload) | Board, move history, and turn state are restored exactly (pawns on e4/d5, white to move); status shows "White's turn" |
+| 4 | Click **Take Back** | Undoes the most recent half-move (1 in human mode, 2 in bot mode); `updateTakeBackButton()` re-gates via `canUndo()` |
+| 5 | **Clear** `localStorage` (`evaluate_script`: `localStorage.clear()`) then reload | A fresh starting position loads cleanly with no errors |
+
+### Validation Points
+- After reload, `window.chessMCP.getBoardState()` matches the pre-reload position.
+- After reload, `window.chessMCP.getCurrentTurn()` matches the pre-reload turn.
+- The difficulty dropdown matches the saved `botDifficulty`.
+- Clearing storage yields the standard starting position and a working New Game / move flow.
+
+### Quick programmatic check
+```javascript
+// Inspect the saved game without touching the UI:
+JSON.parse(localStorage.getItem('chessGame')).gameState.currentTurn
+// Force a fresh start:
+localStorage.clear(); location.reload();
+```
 
 ---
 

@@ -436,9 +436,8 @@ class ChessGame {
         if (!this.botAI) { startTimer(); }
 
         // Read current dropdown value at move time to handle difficulty changes during game
-        const currentBotDiffSelect = document.getElementById('mcp-bot-difficulty-select');
-        const currentDifficulty = initialBotDifficulties[currentBotDiffSelect?.value] || 'medium';
-        
+        const currentDifficulty = getCurrentDifficulty();
+
         if (currentDifficulty !== 'none' && this.gameState.currentTurn === 'black' && this.gameActive) {
             const self = this;
             const useWorker = currentDifficulty === 'hard' && typeof Worker !== 'undefined';

@@ -1,0 +1,218 @@
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        h1 { text-align: center; padding: 10px; background: #2c3e50; color: white; font-size: 1.5rem; }
+        .main-container {
+            display: flex;
+            flex: 1;
+            height: calc(100vh - 50px);
+        }
+        .panel { padding: 15px; overflow-y: auto; }
+        .board-panel {
+            flex: 3;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #ecf0f1;
+            padding: 20px;
+        }
+        .resize-handle {
+            width: 5px;
+            background: #bdc3c7;
+            cursor: col-resize;
+            transition: background 0.2s;
+        }
+        .resize-handle:hover { background: #7f8c8d; }
+        .history-panel {
+            flex: 1;
+            min-width: 250px;
+            max-width: 300px;
+            background: #fff;
+            border-left: 1px solid #bdc3c7;
+        }
+
+        /* Chess Board */
+        #mcp-board-grid-8x8 {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+            border: 12px solid #5d4037;
+            user-select: none;
+            max-width: 126vh;
+            max-height: 126vh;
+            aspect-ratio: 1 / 1;
+        }
+        .square {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: clamp(22px, 8vh, 64px);
+            cursor: pointer;
+            position: relative;
+            border: none;
+            background: transparent;
+            padding: 0;
+        }
+        .square::before {
+            content: '';
+            display: block;
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0; left: 0;
+            z-index: -1;
+        }
+        .square.white { background: #f0e6d2; }
+        .square.black { background: #795548; }
+        .square.selected { background: #f1c40f !important; }
+        .square.legal-move::after {
+            content: '';
+            position: absolute;
+            width: clamp(8px, 2vh, 16px);
+            height: clamp(8px, 2vh, 16px);
+            background: radial-gradient(circle at center, rgba(46, 204, 113, 0.9) 0%, rgba(46, 204, 113, 0.5) 70%);
+            border-radius: 50%;
+        }
+        .square.last-move { background: #e67e22 !important; }
+        .square.in-check { background: #e74c3c !important; }
+
+        /* Piece styling */
+        .piece {
+            cursor: pointer;
+            z-index: 1;
+            display: inline-block;
+            transition: transform 0.2s ease, filter 0.2s ease;
+            pointer-events: none;  /* Allow clicks to pass through to button element for MCP compatibility */
+        }
+        .piece.white {
+            color: #ffffff;
+            text-shadow:
+                -2px -2px 4px rgba(255,255,255,0.6),
+                 1px 1px 2px rgba(0,0,0,0.3),
+                 2px 2px 4px rgba(0,0,0,0.4),
+                 3px 3px 8px rgba(0,0,0,0.5);
+            filter: drop-shadow(1px 1px 1px rgba(0,0,0,0.3));
+        }
+        .piece.black {
+            color: #0a0b0d;
+            text-shadow:
+                1px 1px 2px rgba(255,255,255,0.4),
+                -1px -1px 0 #3a3b40,
+                2px 2px 0 #2d2e33,
+                4px 6px 8px rgba(0,0,0,0.7);
+        }
+        .piece:hover { transform: scale(1.1); }
+
+        /* Game Status */
+        #mcp-status-display {
+            margin-top: 15px;
+            padding: 10px 20px;
+            background: #34495e;
+            color: white;
+            border-radius: 5px;
+            font-size: 1.2rem;
+        }
+
+        /* Move History */
+        .history-panel h3 { padding-bottom: 10px; border-bottom: 1px solid #bdc3c7; color: #2c3e50; }
+        #mcp-move-history-list {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-bottom: 15px;
+        }
+        .history-row { display: flex; padding: 5px 10px; border-bottom: 1px solid #eee; font-size: 0.9rem; }
+        .history-row:nth-child(odd) { background: #f8f9fa; }
+        .history-index { width: 30px; color: #7f8c8d; }
+        .history-move { flex: 1; font-family: monospace; }
+
+        /* Buttons */
+        .button-group { display: flex; flex-direction: column; gap: 8px; margin-top: 15px; }
+        .btn {
+            padding: 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background 0.2s;
+        }
+        .btn-primary { background: #3498db; color: white; }
+        .btn-secondary { background: #95a5a6; color: white; }
+
+        /* Coordinates */
+        .coord-rank { position: absolute; left: 2px; top: 2px; font-size: 10px; color: #7f8c8d; }
+        .coord-file { position: absolute; right: 2px; bottom: 2px; font-size: 10px; color: #7f8c8d; }
+
+        /* Chess Clock */
+        .chess-clock {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            margin-bottom: 15px;
+            background: #ecf0f1;
+            border-radius: 8px;
+            font-family: monospace;
+        }
+        .player-time {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px 20px;
+            min-width: 60px;
+            background: #fff;
+            border-radius: 4px;
+        }
+        .time-display { font-size: 1.3rem; color: #2c3e50; font-weight: bold; }
+        .player-name { font-size: 0.8rem; color: #7f8c8d; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px; }
+
+        /* Dialog */
+        .mcp-dialog-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .mcp-dialog-container {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            max-width: 400px;
+            width: 90%;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        .mcp-dialog-header { margin-bottom: 16px; }
+        .mcp-dialog-title { font-size: 1.5rem; color: #2c3e50; margin-bottom: 8px; }
+        .mcp-dialog-message { color: #7f8c8d; line-height: 1.6; }
+        .mcp-dialog-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            margin-top: 24px;
+        }
+
+        /* Promotion Options */
+        .promotion-options { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 20px; }
+        .promotion-option {
+            padding: 16px;
+            border: 2px solid #ecf0f1;
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: center;
+            font-size: 3rem;
+        }
+        .promotion-option:hover { background: #f8f9fa; border-color: #3498db; }
+
+        @media (max-width: 768px) {
+            .main-container { flex-direction: column; }
+            .resize-handle { width: 100%; height: 5px; cursor: row-resize; }
+            .history-panel { max-width: 100%; min-height: 200px; }
+        }

@@ -209,24 +209,27 @@ When testing with chrome-devtools-mcp:
 | New Game Button | `mcp-btn-new-game` | Reset game state with confirmation dialog |
 | Save Game Button | `mcp-btn-save-game` | Export game to JSON file |
 | Load Game Button | `mcp-btn-load-game` | Import game from JSON file |
-| Reset Position Button | `mcp-btn-reset-position` | Reset board while keeping game active |
+| Take Back Button | `mcp-btn-reset-position` | Undo the last move (1 half-move in human mode, 2 in bot mode); disabled when there's nothing to undo |
 
-#### Test API (window.chessTestAPI)
+#### Test API (window.chessMCP)
+The UI exposes `window.chessMCP` (defined in `chess-ui.js`) for reliable programmatic testing:
 ```javascript
 {
-  getBoardState: () => chessGame.board.grid,     // Get current piece positions as 8x8 array
-  getCurrentTurn: () => chessGame.gameState.currentTurn,
-  getSelectedSquare: () => chessGame.selectedSquare,
-  getLegalMoves: (row, col) => chessGame.getLegalMoves(chessGame.board, row, col),
-  getMoveHistory: () => chessGame.moveHistory,
-  isGameActive: () => chessGame.gameActive
+  clickSquare: (row, col) => selectSquare(row, col),                     // select a square / start a move
+  executeMove: (fromRow, fromCol, toRow, toCol) =>                      // execute a move directly
+      chessGame.executeMove({row: fromRow, col: fromCol}, {row: toRow, col: toCol}),
+  getBoardState: () => chessGame.board.grid,                             // 8x8 piece grid
+  getCurrentTurn: () => chessGame.gameState.currentTurn,                 // 'white' | 'black'
+  getLegalMovesForSquare: (row, col) => chessGame.getLegalMoves(chessGame.board, row, col)
 }
 ```
+
+> **Note:** Older docs referenced `window.chessTestAPI`; the current build exposes `window.chessMCP` with the shape above. `chessGame` is also a `window` global (`window.chessGame`).
 
 #### Testing Workflow Using MCP Tools
 1. **Navigate**: `navigate_page({type: 'url', url: 'file:///path/to/chess.html'})`
 2. **Snapshot**: Use `take_snapshot()` to get element UIDs for buttons/boards
-3. **Query State**: Use `evaluate_script()` with chessTestAPI functions
+3. **Query State**: Use `evaluate_script()` with `window.chessMCP` functions (e.g. `getCurrentTurn()`, `getBoardState()`, `getLegalMovesForSquare(row, col)`)
 4. **Interact**: Click board squares or buttons using their UIDs from snapshot  
 5. **Verify**: Check status display, move history panel, and timer
 
@@ -241,6 +244,27 @@ When testing with chrome-devtools-mcp:
 - **Auto-save vs Manual save**: Separate logic - `autoSave()` for silent localStorage persistence, `saveGame()` for user-triggered file export
 - **Async functions**: Use `async`/`await` for file system operations (File System Access API)
 - **Fallback patterns**: Always provide fallbacks for modern APIs (e.g., blob download for save, file input for load)
+
+### Chess UI File Structure (2026 refactor)
+The chess UI was split out of a single ~1000-line inline `<script>` into classic global scripts (no build step, no ES modules) to keep the Worker + MCP API working while cleaning up duplicated logic. Files and load order (as loaded at the bottom of `chess.html`):
+
+| Order | File | Responsibility |
+|-------|------|----------------|
+| 1 | `chess-core.js` | DOM-free core engine: `Piece`/`createPiece`, `ChessBoard`, `GameState`, piece-square tables. Loaded by the main thread **and** the Worker (`importScripts`). |
+| 2-5 | `bot-ai.js`, `bot-ai-evaluation.js`, `bot-ai-engine.js`, `bot-ai-moves.js` | `BotAI` class split across a base file + three prototype-extension files (evaluation / search engine / move generation). |
+| 6 | `chess.js` | `ChessGame` class: `init`, `executeMove`, `createNewGame`, `undoLastMove`, bot orchestration + the lazy Worker singleton. |
+| 7 | `chess-ui-render.js` | Board/status/clock rendering: `initRenderBoard`, `updateRenderBoard`, `renderBoard`, `updateStatus`, `renderMoveHistory`, `updateTakeBackButton`, `startTimer`/`stopTimer`/`updateTimerDisplay`, `calculateTimeColor`. |
+| 8 | `chess-ui-persistence.js` | Save/load: `autoSave`, `saveGame`, `loadGame`, `loadFromLocalStorage`, `loadFromSaved`, and the single serializer `getGameState()`. |
+| 9 | `chess-ui.js` | Controller + init: `selectSquare`, `deselectAll`, `recordMove`, `setupEventListeners`, `init`, `initAsync` (runs last), `getCurrentDifficulty()`, and `window.chessMCP`. |
+| — | `chess.css` | All board/layout/panel styling (linked via `<link href="chess.css?v=2">`). |
+
+Key invariants:
+- **Load order matters**: core → bot-ai* → chess.js → render → persistence → controller. The controller (`chess-ui.js`) must run last so the globals it calls (`renderBoard`, `autoSave`, `chessGame`, …) all exist.
+- **`getGameState()` is the single save serializer** — `autoSave()` reuses it; don't re-implement the object shape.
+- **`getCurrentDifficulty()`** reads the `mcp-bot-difficulty-select` value (`initialBotDifficulties[value] || 'medium'`); used for the initial `botDifficulty`, `init`, `updateStatus` (render), and `executeMove`.
+- **localStorage key**: `'chessGame'` (separate from the notes app's `'markdownNotes'`).
+- **Keyboard shortcuts** (wired in `setupEventListeners`): `Ctrl/Cmd+S` save, `Ctrl/Cmd+L` load, `Ctrl/Cmd+N` new game, `Esc` deselect.
+- **Take Back** (`undoLastMove()`): 1 half-move in human mode, 2 in bot mode; aborts (all-or-nothing) on king/rook/castling moves.
 
 ### Bot AI Architecture (Hard Mode)
 - **Shared engine**: `chess-core.js` (DOM-free: pieces, board, game state, piece-square tables) is loaded by both the main thread and the Web Worker via `importScripts`. The `BotAI` class is split across four classic scripts — `bot-ai.js` (class + constructor + shared utilities) plus three prototype-extension files (`bot-ai-evaluation.js`, `bot-ai-engine.js`, `bot-ai-moves.js`) — all loaded after `bot-ai.js` and before `chess.js`.
@@ -476,8 +500,20 @@ This was a **regression bug** introduced during code refactoring. The original i
 |------|---------|
 | `SPA.md` | This workspace skill documentation |
 | `notes.html` | Main notes SPA application |
-| `chess.html` | Chess SPA with bot AI and testability fixes |
 | `note.html` | Individual note template/variant |
+| `start-server.ps1` | Starts a local HTTP server on port 8000 (required to load the modularized JS via `<script src>`) |
+| **Chess SPA (classic global scripts, no build)** | |
+| `chess.html` | Chess SPA shell (~60 lines): DOM + `<link>`/`<script>` wiring only |
+| `chess.css` | All chess UI styling (linked via `?v=2`) |
+| `chess-core.js` | DOM-free core engine (pieces, board, game state, PST); shared by main thread + Worker |
+| `bot-ai.js` + `bot-ai-evaluation.js` / `bot-ai-engine.js` / `bot-ai-moves.js` | `BotAI` class (base + prototype extensions) |
+| `bot-worker.js` | Web Worker for hard-mode iterative-deepening search (off-thread) |
+| `chess.js` | `ChessGame` class (game lifecycle, execute/undo move, bot + Worker orchestration) |
+| `chess-ui-render.js` | Board/status/clock rendering |
+| `chess-ui-persistence.js` | Save/load/localStorage (single `getGameState()` serializer) |
+| `chess-ui.js` | UI controller + init + `window.chessMCP` test API |
+| `chess-tests.html` | Unit test framework for chess classes |
+| `chess-test.md` | Chrome DevTools MCP test cases for chess.html |
 
 ---
 
