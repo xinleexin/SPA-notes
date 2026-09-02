@@ -5,7 +5,7 @@
 // negamax and posts the best move back.
 // ============================================
 
-importScripts('chess-core.js?v=2', 'bot-ai.js?v=2', 'bot-ai-evaluation.js?v=2', 'bot-ai-engine.js?v=2', 'bot-ai-moves.js?v=2');
+importScripts('chess-core.js?v=3', 'bot-ai.js?v=3', 'bot-ai-evaluation.js?v=3', 'bot-ai-engine.js?v=3', 'bot-ai-moves.js?v=3');
 
 function buildGameFromMessage(msg) {
     const board = new ChessBoard();

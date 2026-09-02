@@ -2,6 +2,10 @@
 // CHESS GAME SPA - Initialization Code
 // ============================================
 
+// Set to true to restore per-click debug logging (used by MCP test scenarios)
+const DEBUG = false;
+const log = (...args) => { if (DEBUG) console.log(...args); };
+
 const initialBotDifficulties = {
     'none': 'none',
     'easy': 'easy', 
@@ -22,57 +26,60 @@ let botDifficulty = getCurrentDifficulty();
 // MCP Test API - Direct function calls for reliable testing
 window.chessMCP = {
     clickSquare: (row, col) => selectSquare(row, col),
-    executeMove: (fromRow, fromCol, toRow, toCol) => 
-        chessGame.executeMove({row: fromRow, col: fromCol}, {row: toRow, col: toCol}),
+    executeMove: (fromRow, fromCol, toRow, toCol) => {
+        // Validate the move first — unlike selectSquare(), this API is called
+        // directly, and applying an illegal move corrupts the board (no engine check).
+        const piece = chessGame.board.getPiece(fromRow, fromCol);
+        const legal = piece ? chessGame.getLegalMoves(chessGame.board, fromRow, fromCol) : [];
+        const move = legal.find(m => m.row === toRow && m.col === toCol);
+        if (!move) {
+            console.warn(`[chessMCP.executeMove] Rejected illegal move (${fromRow},${fromCol}) -> (${toRow},${toCol})`);
+            return;
+        }
+        return chessGame.executeMove({ row: fromRow, col: fromCol }, { row: toRow, col: toCol });
+    },
     getBoardState: () => chessGame.board.grid,
     getCurrentTurn: () => chessGame.gameState.currentTurn,
     getLegalMovesForSquare: (row, col) => chessGame.getLegalMoves(chessGame.board, row, col)
 };
 
 function selectSquare(row, col) {
-    // Debug logging for MCP testing
-    console.log('=== SELECT SQUARE DEBUG ===');
-    console.log('[SELECT_SQUARE] Clicked:', { row, col });
+    log('[SELECT_SQUARE] Clicked:', { row, col });
 
     if (!chessGame.gameActive) { 
-        console.log('[SELECT_SQUARE] Game not active - returning'); 
+        log('[SELECT_SQUARE] Game not active - returning'); 
         return; 
     }
 
     const piece = chessGame.board.getPiece(row, col);
     const currentTurn = chessGame.gameState.currentTurn;
 
-    console.log('[SELECT_SQUARE] Piece:', piece ? { type: piece.type, color: piece.color } : 'null', '| Current turn:', currentTurn);
+    log('[SELECT_SQUARE] Piece:', piece ? { type: piece.type, color: piece.color } : 'null', '| Current turn:', currentTurn);
 
     if (piece && piece.color === currentTurn) {
-        console.log('[SELECT_SQUARE] Selected own piece - setting selectedSquare and legalMoves');
+        log('[SELECT_SQUARE] Selected own piece - setting selectedSquare and legalMoves');
         chessGame.selectedSquare = { row, col };
         const moves = chessGame.getLegalMoves(chessGame.board, row, col);
         chessGame.legalMoves = moves;
-        console.log('[SELECT_SQUARE] Legal moves:', moves.length > 0 ? moves : 'none', '| selectedSquare:', chessGame.selectedSquare);
+        log('[SELECT_SQUARE] Legal moves:', moves.length > 0 ? moves : 'none', '| selectedSquare:', chessGame.selectedSquare);
         
         // Force re-render to show visual updates
         renderBoard();
         updateStatus(); // Update status in case of check
-        
-        // Log final state after render
-        setTimeout(() => {
-            console.log('[SELECT_SQUARE] After render - selectedSquare:', chessGame.selectedSquare, '| legalMoves count:', chessGame.legalMoves.length);
-        }, 10);
-        
+
         return;
     }
 
     if (chessGame.selectedSquare) {
         const move = chessGame.legalMoves.find(m => m.row === row && m.col === col);
-        console.log('[SELECT_SQUARE] Looking for legal move in selectedSquare:', { found: !!move, move });
+        log('[SELECT_SQUARE] Looking for legal move in selectedSquare:', { found: !!move, move });
 
         if (move) {
-            console.log('[SELECT_SQUARE] Executing move from', chessGame.selectedSquare, 'to', move);
+            log('[SELECT_SQUARE] Executing move from', chessGame.selectedSquare, 'to', move);
             chessGame.executeMove(chessGame.selectedSquare, move);
             return;
         } else {
-            console.log('[SELECT_SQUARE] Clicked non-legal square - deselecting');
+            log('[SELECT_SQUARE] Clicked non-legal square - deselecting');
             deselectAll();
             return;
         }
@@ -83,7 +90,7 @@ function selectSquare(row, col) {
 }
 
 function deselectAll() {
-    console.log('[DESELECT_ALL] Clearing selection');
+    log('[DESELECT_ALL] Clearing selection');
     chessGame.selectedSquare = null;
     chessGame.legalMoves = [];
     renderBoard();
@@ -98,6 +105,9 @@ function recordMove(from, to, piece, captured) {
         notation += '×';
     }
     notation += columns[to.col] + rows[to.row];
+
+    // Pawn promotion is always auto-queen (see executeMove) — show it in the notation
+    if (piece.type === 'p' && (to.row === 0 || to.row === 7)) notation += '=Q';
 
     const opponentColor = piece.color === 'white' ? 'black' : 'white';
 
@@ -214,7 +224,7 @@ function setupEventListeners() {
         if (botDifficulty !== 'none') { blackClockContainer.style.display = 'none'; }
         else {
             blackClockContainer.style.display = 'block';
-            startTimer();
+            if (chessGame.gameActive) { startTimer(); }  // Don't start a clock on an already-finished game
         }
 
         await autoSave();
@@ -230,14 +240,22 @@ async function init() {
     console.log('[INIT] Bot difficulty:', botDifficulty);
     setupEventListeners();
 
+    // Capture any saved state BEFORE chessGame.init() — its createNewGame() removes
+    // the localStorage key, so it must be read up front to survive the reset.
+    const savedState = localStorage.getItem('chessGame');
+
     console.log('[INIT] Calling chessGame.init...');
     await chessGame.init(botDifficulty);
     console.log('[INIT] chessGame.init completed');
 
+    // Restore any saved game — chessGame.init() always starts fresh, so a saved
+    // position (including a finished one) must be re-applied on top of it.
+    loadFromLocalStorage(savedState);
+
     document.getElementById('blackClockContainer').style.display =
         botDifficulty === 'none' ? 'block' : 'none';
 
-    if (botDifficulty === 'none') { startTimer(); }
+    if (botDifficulty === 'none' && chessGame.gameActive) { startTimer(); }  // Not on a restored finished game
 }
 
 const initAsync = async () => {

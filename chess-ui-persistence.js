@@ -93,21 +93,20 @@ async function loadGame() {
     input.click();
 }
 
-function loadFromLocalStorage() {
-    const saved = localStorage.getItem(STORAGE_KEY);
+function loadFromLocalStorage(savedData) {
+    // Accept the saved string captured *before* chessGame.init() ran — init's
+    // createNewGame() removes the localStorage key, so reading it afterwards
+    // would always come up empty.
+    const saved = savedData !== undefined ? savedData : localStorage.getItem(STORAGE_KEY);
 
     if (saved) {
         loadFromSaved(saved);
         renderBoard();
         renderMoveHistory();
         updateStatus();
-    } else {
-        chessGame.init(botDifficulty);
-
-        document.getElementById('blackClockContainer').style.display = 'block';
-
-        if (botDifficulty === 'none') { startTimer(); }
     }
+    // No saved state: keep the fresh game the caller just created via chessGame.init();
+    // clock/dropdown handling belongs to the caller (see init() in chess-ui.js).
 }
 
 function loadFromSaved(savedData) {
@@ -130,7 +129,8 @@ function loadFromSaved(savedData) {
     chessGame.lastMove = state.lastMove;
 
     botDifficulty = state.botDifficulty !== undefined ? state.botDifficulty : 'medium';
-    
+    if (chessGame) { chessGame.botDifficulty = botDifficulty; }  // keep the class in sync (canUndo/undoLastMove gate on it)
+
     // Update dropdown to match loaded difficulty
     const selectElement = document.getElementById('mcp-bot-difficulty-select');
     if (selectElement) {

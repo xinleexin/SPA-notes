@@ -130,6 +130,12 @@
         .history-row:nth-child(odd) { background: #f8f9fa; }
         .history-index { width: 30px; color: #7f8c8d; }
         .history-move { flex: 1; font-family: monospace; }
+        .history-empty { color: #7f8c8d; text-align: center; padding: 20px; }
+
+        /* Bot Settings */
+        .bot-settings-panel { margin-top: 15px; padding-top: 15px; border-top: 1px solid #bdc3c7; }
+        .bot-settings-label { display: block; margin-bottom: 5px; color: #2c3e50; font-weight: 600; }
+        .bot-settings-select { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #bdc3c7; }
 
         /* Buttons */
         .button-group { display: flex; flex-direction: column; gap: 8px; margin-top: 15px; }
@@ -150,7 +156,7 @@
 
         /* Chess Clock */
         .chess-clock {
-            display: flex;
+            display: none;
             justify-content: space-between;
             align-items: center;
             padding: 10px;
@@ -170,6 +176,8 @@
         }
         .time-display { font-size: 1.3rem; color: #2c3e50; font-weight: bold; }
         .player-name { font-size: 0.8rem; color: #7f8c8d; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px; }
+        .player-time.active { background: #34495e; }
+        .player-time.active .time-display { color: #fff; }
 
         /* Dialog */
         .mcp-dialog-overlay {

@@ -19,6 +19,8 @@ chess-core.js → bot-ai.js → bot-ai-evaluation.js → bot-ai-engine.js → bo
   → chess.js → chess-ui-render.js → chess-ui-persistence.js → chess-ui.js
 ```
 
+> **Cache busting:** every `<script>`/`<link>` tag in `chess.html` **and** the `importScripts(...)` strings in `bot-worker.js` carry the same `?v=N` query (currently `?v=3`). Bump **all of them together** — a mismatch between the main thread and the Worker versions desyncs the hard-mode engine.
+
 | File | What lives there |
 |------|------------------|
 | `chess.css` | All board/layout/panel styling (`#mcp-board-grid-8x8`, `.selected`, `.move-indicator`, panels, clock) |
@@ -157,8 +159,8 @@ Each square button in the chess grid has three key identifiers:
 
 ### How persistence works (code reference)
 - `autoSave()` (in `chess-ui-persistence.js`, called after every `executeMove`) serializes the game via `getGameState()` and writes it to `localStorage` under key `'chessGame'`.
-- On load, `initAsync() → init() → loadFromLocalStorage()`: if a saved game exists it calls `loadFromSaved()` + re-renders; otherwise it starts fresh with `chessGame.init(botDifficulty)`.
-- `loadFromSaved()` restores the board grid, `currentTurn`, castling rights, en-passant target, king positions, `selectedSquare`, `legalMoves`, `moveHistory`, `gameActive`, `lastMove`, `botDifficulty` (syncs the dropdown) and clock `currentTime`, then calls `stopTimer()` + `updateTakeBackButton()`.
+- On load, `initAsync() → init()`: `init()` captures the saved state **before** `chessGame.init()` (whose `createNewGame()` removes the localStorage key), then `loadFromLocalStorage(savedState)` re-applies it via `loadFromSaved()` + re-render if a saved game exists, otherwise keeps the fresh game.
+- `loadFromSaved()` restores the board grid, `currentTurn`, castling rights, en-passant target, king positions, `selectedSquare`, `legalMoves`, `moveHistory`, `gameActive`, `lastMove`, `botDifficulty` (syncs the dropdown **and** `chessGame.botDifficulty`, which `canUndo()`/`undoLastMove()` gate on) and clock `currentTime`, then calls `stopTimer()` + `updateTakeBackButton()`.
 
 ### Test Steps
 | Step | Action | Expected Result |
@@ -366,6 +368,5 @@ When testing bot moves, check console logs for:
 
 ## Known Limitations
 
-- Pawn promotion requires manual selection in human vs human mode
+- Pawn promotion is auto-queen (no manual selection)
 - Chess clock only displays when no bot is active
-- Move history may not display check/checkmate symbols if game ends immediately

@@ -4,28 +4,29 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SPA Chess</title>
-    <link rel="stylesheet" href="chess.css?v=2">
+    <link rel="stylesheet" href="chess.css?v=3">
 </head>
 <body>
+    <noscript><p style="text-align: center; padding: 20px;">SPA Chess requires JavaScript to run.</p></noscript>
     <h1>♟️ SPA Chess</h1>
 
     <div class="main-container">
-        <div class="panel board-panel" role="main">
+        <main class="panel board-panel">
             <div id="mcp-board-grid-8x8" role="grid"></div>
             <div id="mcp-status-display">White's turn</div>
-        </div>
+        </main>
         <div class="resize-handle" id="resizeHandle"></div>
         <div class="panel history-panel">
-            <div id="chessClock" class="chess-clock" style="display: none;">
-                <div class="player-time white active"><span class="player-name">White</span><span id="currentWhiteTime" class="time-display">00:00</span></div>
+            <div id="chessClock" class="chess-clock">
+                <div class="player-time white active" id="whiteTimeDisplay"><span class="player-name">White</span><span id="currentWhiteTime" class="time-display">00:00</span></div>
                 <div id="blackClockContainer">
-                    <div class="player-time black"><span class="player-name">Black</span><span id="currentBlackTime" class="time-display">00:00</span></div>
+                    <div class="player-time black" id="blackTimeDisplay"><span class="player-name">Black</span><span id="currentBlackTime" class="time-display">00:00</span></div>
                 </div>
             </div>
 
             <h3>Move History</h3>
             <div id="mcp-move-history-list">
-                <p style="color: #7f8c8d; text-align: center; padding: 20px;">No moves yet</p>
+                <p class="history-empty">No moves yet</p>
             </div>
 
             <div class="button-group">
@@ -35,26 +36,26 @@
                 <button class="btn btn-danger" id="mcp-btn-reset-position" disabled>Take Back</button>
             </div>
 
-            <div id="mcp-bot-settings-panel" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #bdc3c7;">
-                <label for="botDifficultySelect" style="display: block; margin-bottom: 5px; color: #2c3e50; font-weight: 600;">Bot Difficulty</label>
-                <select id="mcp-bot-difficulty-select" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #bdc3c7;">
+            <div class="bot-settings-panel" id="mcp-bot-settings-panel">
+                <label class="bot-settings-label" for="mcp-bot-difficulty-select">Bot Difficulty</label>
+                <select class="bot-settings-select" id="mcp-bot-difficulty-select">
                     <option value="none">No Bot (Human vs Human)</option>
                     <option value="easy">Easy (Random)</option>
                     <option value="medium" selected>Medium (2-ply)</option>
-                    <option value="hard">Hard (3-ply)</option>
+                    <option value="hard">Hard (Iterative deepening, off-thread)</option>
                 </select>
             </div>
         </div>
     </div>
 
-<script src="chess-core.js?v=2"></script>
-<script src="bot-ai.js?v=2"></script>
-<script src="bot-ai-evaluation.js?v=2"></script>
-<script src="bot-ai-engine.js?v=2"></script>
-<script src="bot-ai-moves.js?v=2"></script>
-<script src="chess.js?v=2"></script>
-<script src="chess-ui-render.js?v=2"></script>
-<script src="chess-ui-persistence.js?v=2"></script>
-<script src="chess-ui.js?v=2"></script>
+<script src="chess-core.js?v=3"></script>
+<script src="bot-ai.js?v=3"></script>
+<script src="bot-ai-evaluation.js?v=3"></script>
+<script src="bot-ai-engine.js?v=3"></script>
+<script src="bot-ai-moves.js?v=3"></script>
+<script src="chess.js?v=3"></script>
+<script src="chess-ui-render.js?v=3"></script>
+<script src="chess-ui-persistence.js?v=3"></script>
+<script src="chess-ui.js?v=3"></script>
 </body>
 </html>

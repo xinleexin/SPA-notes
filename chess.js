@@ -312,6 +312,8 @@ class ChessGame {
         renderBoard();
         renderMoveHistory();  // Update move history display
         updateStatus();  // Refresh status (e.g. clears a stale "Checkmate!" banner after take-back)
+        // The clock's running tick (started by init) resumes automatically since
+        // gameActive is true again; no timer restart needed here.
     }
 
     canUndo() {
@@ -433,7 +435,10 @@ class ChessGame {
         deselectAll();
         renderMoveHistory();
 
-        if (!this.botAI) { startTimer(); }
+        // Clock lifecycle: one interval is started by init()/the difficulty handler;
+        // its tick is gated on chessGame.gameActive, so the clock freezes automatically
+        // when this move ends the game. (Note: chessGame.botAI is never null — even in
+        // 'none' mode — so key clock decisions off botDifficulty, not botAI.)
 
         // Read current dropdown value at move time to handle difficulty changes during game
         const currentDifficulty = getCurrentDifficulty();

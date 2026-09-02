@@ -5,7 +5,9 @@ const rows = ['8', '7', '6', '5', '4', '3', '2', '1'];
 const squareMap = {}; // keyed by data-chessCoord
 
 function initRenderBoard() {
-    const kingInCheck = chessGame.gameState.isCheck(chessGame.gameState.currentTurn) && chessGame.gameActive;
+    // Derive check purely from the position — no gameActive gate: at checkmate the
+    // game is already over (gameActive false) but the mated king must stay highlighted.
+    const kingInCheck = chessGame.gameState.isCheck(chessGame.gameState.currentTurn);
     const kingPos = kingInCheck ? chessGame.gameState.findKing(chessGame.gameState.currentTurn) : null;
 
     for (let row = 0; row < 8; row++) {
@@ -83,7 +85,9 @@ function initRenderBoard() {
 }
 
 function updateRenderBoard() {
-    const kingInCheck = chessGame.gameState.isCheck(chessGame.gameState.currentTurn) && chessGame.gameActive;
+    // Derive check purely from the position (see initRenderBoard for why gameActive
+    // must not gate this — the mated king keeps its highlight at game over).
+    const kingInCheck = chessGame.gameState.isCheck(chessGame.gameState.currentTurn);
     const kingPos = kingInCheck ? chessGame.gameState.findKing(chessGame.gameState.currentTurn) : null;
 
     for (let row = 0; row < 8; row++) {
@@ -189,7 +193,7 @@ function renderMoveHistory() {
     moveHistoryList.innerHTML = '';
 
     if (chessGame.moveHistory.length === 0) {
-        moveHistoryList.innerHTML = '<p style="color: #7f8c8d; text-align: center; padding: 20px;">No moves yet</p>';
+        moveHistoryList.innerHTML = '<p class="history-empty">No moves yet</p>';
         return;
     }
 
@@ -238,6 +242,8 @@ function updateStatus() {
             gameStatusElement.style.backgroundColor = '#f39c12';
         }
 
+        updateChessClockActive();  // Game over: freeze the clock (no highlighted player)
+
         return;
     }
 
@@ -282,14 +288,9 @@ function startTimer() {
     updateChessClockDisplay();
 
     timerInterval = setInterval(() => {
-        if (chessGame.currentTurnTime !== null) {
+        if (chessGame.currentTurnTime !== null && chessGame.gameActive) {
             chessGame.currentTurnTime++;
-
-            const playerKey = chessGame.gameState.currentTurn === 'white'
-                ? 'currentWhiteTime'
-                : 'currentBlackTime';
-
-            document.getElementById(playerKey).textContent = formatTime(chessGame.currentTurnTime);
+            updateChessClockDisplay();
             updateChessClockActive();
         }
     }, 1000);
@@ -301,28 +302,34 @@ function stopTimer() {
     if (chessGame.currentTurnTime !== null && chessGame.gameActive) {
         const playerKey = chessGame.gameState.currentTurn === 'white' ? 'black' : 'white';
         chessGame.currentTime[playerKey] += chessGame.currentTurnTime;
-
-        document.getElementById('totalWhiteTime').textContent = formatTime(chessGame.currentTime.white);
-        document.getElementById('totalBlackTime').textContent = formatTime(chessGame.currentTime.black);
     }
 
     chessGame.currentTurnTime = null;
+    updateChessClockDisplay();
+    updateChessClockActive();
 }
 
 function updateChessClockDisplay() {
+    const turnTime = chessGame.currentTurnTime || 0;
     const whiteTotal = chessGame.currentTime.white +
-        (chessGame.gameState.currentTurn === 'white' ? chessGame.currentTurnTime : 0);
-
+        (chessGame.gameState.currentTurn === 'white' ? turnTime : 0);
     const blackTotal = chessGame.currentTime.black +
-        (chessGame.gameState.currentTurn === 'black' ? chessGame.currentTurnTime : 0);
+        (chessGame.gameState.currentTurn === 'black' ? turnTime : 0);
 
-    document.getElementById('totalWhiteTime').textContent = formatTime(whiteTotal);
-    document.getElementById('totalBlackTime').textContent = formatTime(blackTotal);
+    document.getElementById('currentWhiteTime').textContent = formatTime(whiteTotal);
+    document.getElementById('currentBlackTime').textContent = formatTime(blackTotal);
 }
 
 function updateChessClockActive() {
     const whiteDisplay = document.getElementById('whiteTimeDisplay');
     const blackDisplay = document.getElementById('blackTimeDisplay');
+
+    if (!chessGame.gameActive) {
+        // Game over (checkmate / stalemate / king captured): freeze — no active player
+        whiteDisplay.classList.remove('active');
+        blackDisplay.classList.remove('active');
+        return;
+    }
 
     if (chessGame.gameState.currentTurn === 'white') {
         whiteDisplay.classList.add('active');
