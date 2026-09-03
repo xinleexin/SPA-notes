@@ -19,7 +19,7 @@ chess-core.js → bot-ai.js → bot-ai-evaluation.js → bot-ai-engine.js → bo
   → chess.js → chess-ui-render.js → chess-ui-persistence.js → chess-ui.js
 ```
 
-> **Cache busting:** every `<script>`/`<link>` tag in `chess.html` **and** the `importScripts(...)` strings in `bot-worker.js` carry the same `?v=N` query (currently `?v=3`). Bump **all of them together** — a mismatch between the main thread and the Worker versions desyncs the hard-mode engine.
+> **Cache busting:** every `<script>`/`<link>` tag in `chess.html` **and** the `importScripts(...)` strings in `bot-worker.js` carry the same `?v=N` query (currently `?v=4`). Bump **all of them together** — a mismatch between the main thread and the Worker versions desyncs the hard-mode engine.
 
 | File | What lives there |
 |------|------------------|
@@ -28,7 +28,7 @@ chess-core.js → bot-ai.js → bot-ai-evaluation.js → bot-ai-engine.js → bo
 | `bot-ai.js` + 3 extension files | `BotAI` class split across a base file + `bot-ai-evaluation.js` / `bot-ai-engine.js` / `bot-ai-moves.js` |
 | `bot-worker.js` | Web Worker for hard-mode iterative-deepening search (off-thread); lazy singleton, terminated on new game / `beforeunload` |
 | `chess.js` | `ChessGame` class — `init`, `executeMove`, `createNewGame`, `undoLastMove`, bot + Worker orchestration |
-| `chess-ui-render.js` | Board/status/clock rendering: `initRenderBoard`, `updateRenderBoard`, `renderBoard`, `updateStatus`, `renderMoveHistory`, `updateTakeBackButton`, `startTimer`/`stopTimer`/`updateTimerDisplay`, `calculateTimeColor` |
+| `chess-ui-render.js` | Board/status/clock rendering: `initRenderBoard`, `updateRenderBoard`, `renderBoard`, `updateStatus`, `renderMoveHistory`, `updateTakeBackButton`, `startTimer`/`stopTimer`/`settleClockTurn`/`updateChessClockDisplay`/`updateChessClockActive` |
 | `chess-ui-persistence.js` | `autoSave`, `saveGame`, `loadGame`, `loadFromLocalStorage`, `loadFromSaved`, and the single serializer `getGameState()` |
 | `chess-ui.js` | Controller + init: `selectSquare`, `deselectAll`, `recordMove`, `setupEventListeners`, `init`/`initAsync`, `getCurrentDifficulty()`, and `window.chessMCP` |
 
@@ -137,7 +137,7 @@ Each square button in the chess grid has three key identifiers:
 | 2 | Verify legal move indicators | Green dots on e3 and e4 squares |
 | 3 | Click e4 square to move | Pawn moves from e2→e4, turn switches to black |
 | 4 | Verify history panel | Move recorded: "1. e4" under White column |
-| 5 | Check timer display | Chess clock visible with white time active |
+| 5 | Check timer display | Chess clock visible (White / Black / Total rows) with white time active |
 | 6 | Click black pawn at d7 (row 1, col 3) | Legal moves shown for black pawn |
 | 7 | Move black pawn to d5 | Pawn moves from d7→d5 |
 | 8 | Verify history panel | "1. e4 d5" recorded in move history |
@@ -145,8 +145,15 @@ Each square button in the chess grid has three key identifiers:
 ### Validation Points
 - White moves first correctly
 - Black responds after white's move
-- Timer starts for human vs human mode
+- Per-side clock starts for human vs human mode (each side accumulates only its own turn time; **Total = White + Black** at every moment)
 - Move history displays alternating turns
+
+### How the clock works (code reference)
+- State lives on the game object: `chessGame.currentTime = { white, black }` (committed seconds) + `chessGame.currentTurnTime` (in-flight seconds for the current turn; `null` = clock not running).
+- One `setInterval` tick (started by `init()`/the difficulty handler in human mode) increments `currentTurnTime` every second, gated on `gameActive` — so the clock freezes at game over.
+- `executeMove()` calls `settleClockTurn(mover)` on every successful move: the in-flight seconds are credited to the side that just moved and the counter resets, so each display shows that side's own time spent. `undoLastMove()` settles the in-flight seconds to the side that was to move when take-back was pressed — **time does not roll back on take-back** (the taking side starts a fresh 00:00 turn).
+- `stopTimer()` only clears the interval; it never credits time (all crediting goes through `settleClockTurn()`).
+- On reload, committed `currentTime` is restored via `loadFromSaved()`; in-flight seconds (<1s) are dropped.
 
 ---
 
@@ -369,4 +376,4 @@ When testing bot moves, check console logs for:
 ## Known Limitations
 
 - Pawn promotion is auto-queen (no manual selection)
-- Chess clock only displays when no bot is active
+- Chess clock only displays when no bot is active (per-side time spent + total; time never rolls back on take-back)

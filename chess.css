@@ -157,13 +157,20 @@
         /* Chess Clock */
         .chess-clock {
             display: none;
-            justify-content: space-between;
+            flex-direction: column;
             align-items: center;
+            gap: 10px;
             padding: 10px;
             margin-bottom: 15px;
             background: #ecf0f1;
             border-radius: 8px;
             font-family: monospace;
+        }
+        .chess-clock-players {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
         }
         .player-time {
             display: flex;
@@ -178,6 +185,8 @@
         .player-name { font-size: 0.8rem; color: #7f8c8d; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px; }
         .player-time.active { background: #34495e; }
         .player-time.active .time-display { color: #fff; }
+        .clock-total { background: transparent; padding: 0 20px; }
+        .clock-total .time-display { font-size: 1rem; color: #7f8c8d; font-weight: 600; }
 
         /* Dialog */
         .mcp-dialog-overlay {

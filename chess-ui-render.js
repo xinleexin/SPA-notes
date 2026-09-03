@@ -299,14 +299,22 @@ function startTimer() {
 function stopTimer() {
     if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
 
-    if (chessGame.currentTurnTime !== null && chessGame.gameActive) {
-        const playerKey = chessGame.gameState.currentTurn === 'white' ? 'black' : 'white';
-        chessGame.currentTime[playerKey] += chessGame.currentTurnTime;
-    }
-
+    // Purely stops the tick. Crediting in-flight seconds to a side is
+    // settleClockTurn()'s job — called from chess.js on every turn change
+    // (executeMove / undoLastMove).
     chessGame.currentTurnTime = null;
     updateChessClockDisplay();
     updateChessClockActive();
+}
+
+// Credits the in-flight turn seconds to the side that just used them, then
+// resets the counter so the next side starts a fresh 00:00 turn.
+function settleClockTurn(color) {
+    if (chessGame.currentTurnTime !== null && color) {
+        chessGame.currentTime[color] += chessGame.currentTurnTime;
+        chessGame.currentTurnTime = 0;
+        updateChessClockDisplay();
+    }
 }
 
 function updateChessClockDisplay() {
@@ -318,6 +326,7 @@ function updateChessClockDisplay() {
 
     document.getElementById('currentWhiteTime').textContent = formatTime(whiteTotal);
     document.getElementById('currentBlackTime').textContent = formatTime(blackTotal);
+    document.getElementById('currentTotalTime').textContent = formatTime(whiteTotal + blackTotal);
 }
 
 function updateChessClockActive() {

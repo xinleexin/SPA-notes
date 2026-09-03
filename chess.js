@@ -258,6 +258,10 @@ class ChessGame {
             }
         }
         
+        // Clock: the in-flight seconds belong to the side that was to move when
+        // the take-back was pressed (take-back does not roll time back).
+        const pendingTurn = this.gameState.currentTurn;
+
         // Undo the last move(s)
         let undoneCount = 0;
         while (undoneCount < minMovesNeeded && this.moveHistory.length > 0) {
@@ -307,11 +311,17 @@ class ChessGame {
         
         this.lastMove = null;
         this.gameActive = true;
+
+        // Settle the in-flight seconds to the side that was to move before the
+        // take-back (their time is not rolled back); the taking side starts a
+        // fresh 00:00 turn.
+        settleClockTurn(pendingTurn);
         
         await autoSave();
         renderBoard();
         renderMoveHistory();  // Update move history display
         updateStatus();  // Refresh status (e.g. clears a stale "Checkmate!" banner after take-back)
+        updateChessClockActive();  // Highlight the side to move after the turn flipped back
         // The clock's running tick (started by init) resumes automatically since
         // gameActive is true again; no timer restart needed here.
     }
@@ -355,6 +365,7 @@ class ChessGame {
     async executeMove(from, to) {
         const piece = this.board.grid[from.row][from.col];
         const targetPiece = this.board.grid[to.row][to.col];
+        const mover = this.gameState.currentTurn;  // the side whose clock is running right now
 
         if (to.isEnPassant) {
             const capturedPawnRow = piece.color === 'white' ? to.row + 1 : to.row - 1;
@@ -413,6 +424,11 @@ class ChessGame {
             this.gameState.enPassantTarget = { row: Math.floor((from.row + to.row) / 2), col: from.col };
         } else { this.gameState.enPassantTarget = null; }
 
+        // Settle the clock: credit the in-flight seconds to the side that just
+        // moved. If this move ends the game, the tick (gated on gameActive)
+        // stops, so the mated/stalemated side never accrues further time.
+        settleClockTurn(mover);
+
         // Switch turn before recordMove and game over checks
         this.gameState.switchTurn();
 
@@ -429,6 +445,11 @@ class ChessGame {
             this.gameActive = false;
             updateStatus();
         }
+
+        // Sync the clock right after the turn flip (the interval tick would
+        // otherwise refresh the active highlight up to a second later).
+        updateChessClockDisplay();
+        updateChessClockActive();
 
         try { await autoSave(); } catch (e) { console.error('[executeMove] AutoSave error:', e); }
         

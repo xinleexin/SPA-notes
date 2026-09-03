@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SPA Chess</title>
-    <link rel="stylesheet" href="chess.css?v=3">
+    <link rel="stylesheet" href="chess.css?v=4">
 </head>
 <body>
     <noscript><p style="text-align: center; padding: 20px;">SPA Chess requires JavaScript to run.</p></noscript>
@@ -18,10 +18,13 @@
         <div class="resize-handle" id="resizeHandle"></div>
         <div class="panel history-panel">
             <div id="chessClock" class="chess-clock">
-                <div class="player-time white active" id="whiteTimeDisplay"><span class="player-name">White</span><span id="currentWhiteTime" class="time-display">00:00</span></div>
-                <div id="blackClockContainer">
-                    <div class="player-time black" id="blackTimeDisplay"><span class="player-name">Black</span><span id="currentBlackTime" class="time-display">00:00</span></div>
+                <div class="chess-clock-players">
+                    <div class="player-time white active" id="whiteTimeDisplay"><span class="player-name">White</span><span id="currentWhiteTime" class="time-display">00:00</span></div>
+                    <div id="blackClockContainer">
+                        <div class="player-time black" id="blackTimeDisplay"><span class="player-name">Black</span><span id="currentBlackTime" class="time-display">00:00</span></div>
+                    </div>
                 </div>
+                <div class="player-time clock-total"><span class="player-name">Total</span><span id="currentTotalTime" class="time-display">00:00</span></div>
             </div>
 
             <h3>Move History</h3>
@@ -48,14 +51,14 @@
         </div>
     </div>
 
-<script src="chess-core.js?v=3"></script>
-<script src="bot-ai.js?v=3"></script>
-<script src="bot-ai-evaluation.js?v=3"></script>
-<script src="bot-ai-engine.js?v=3"></script>
-<script src="bot-ai-moves.js?v=3"></script>
-<script src="chess.js?v=3"></script>
-<script src="chess-ui-render.js?v=3"></script>
-<script src="chess-ui-persistence.js?v=3"></script>
-<script src="chess-ui.js?v=3"></script>
+<script src="chess-core.js?v=4"></script>
+<script src="bot-ai.js?v=4"></script>
+<script src="bot-ai-evaluation.js?v=4"></script>
+<script src="bot-ai-engine.js?v=4"></script>
+<script src="bot-ai-moves.js?v=4"></script>
+<script src="chess.js?v=4"></script>
+<script src="chess-ui-render.js?v=4"></script>
+<script src="chess-ui-persistence.js?v=4"></script>
+<script src="chess-ui.js?v=4"></script>
 </body>
 </html>
