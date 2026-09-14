@@ -221,6 +221,14 @@ function setupEventListeners() {
             chessGame.botDifficulty = botDifficulty;
         }
 
+        // Switching INTO bot mode while it's Black's turn must trigger the bot —
+        // otherwise the game is frozen (the human can't move, the bot never replies).
+        chessGame.triggerBotIfBlackTurn();
+
+        // canUndo()/undoLastMove() gate on botDifficulty, so re-gate the Take Back
+        // button for the new mode (e.g. bot mode needs 2 half-moves to undo).
+        updateTakeBackButton();
+
         if (botDifficulty !== 'none') { blackClockContainer.style.display = 'none'; }
         else {
             blackClockContainer.style.display = 'block';

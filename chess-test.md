@@ -38,7 +38,7 @@ chess-core.js → bot-ai.js → bot-ai-evaluation.js → bot-ai-engine.js → bo
 - **Keyboard shortcuts** (wired in `setupEventListeners`): `Ctrl/Cmd+S` save, `Ctrl/Cmd+L` load, `Ctrl/Cmd+N` new game, `Esc` deselect.
 - **Board squares** are `<button aria-label="<coord>">` inside `#mcp-board-grid-8x8` (row 0 = rank 8 … row 7 = rank 1).
 - `initAsync()` (last script) creates `window.board` and `window.chessGame`, then `init()` → `chessGame.init(botDifficulty)` → `loadFromLocalStorage()` restores any saved game.
-- **Take Back** (`chessGame.undoLastMove()`): undoes **1 half-move** in human mode, **2 half-moves** in bot mode; aborts (all-or-nothing) if a king/rook/castling move is involved. `updateTakeBackButton()` gates the button via `canUndo()`.
+- **Take Back** (`chessGame.undoLastMove()`): undoes **1 half-move** in human mode, **2 half-moves** in bot mode; aborts (all-or-nothing) if a king/rook/castling move is involved. `updateTakeBackButton()` gates the button via `canUndo()`/`getUndoState()` and shows a reason-specific disabled label ("Bot is Thinking..." / "Last Move Can't Be Undone" / "No Move to Undo"). `ChessGame.triggerBotIfBlackTurn()` (shared by `executeMove()` and `loadFromSaved()`) re-triggers the bot after a restored game on Black's turn.
 
 ---
 
@@ -167,7 +167,7 @@ Each square button in the chess grid has three key identifiers:
 ### How persistence works (code reference)
 - `autoSave()` (in `chess-ui-persistence.js`, called after every `executeMove`) serializes the game via `getGameState()` and writes it to `localStorage` under key `'chessGame'`.
 - On load, `initAsync() → init()`: `init()` captures the saved state **before** `chessGame.init()` (whose `createNewGame()` removes the localStorage key), then `loadFromLocalStorage(savedState)` re-applies it via `loadFromSaved()` + re-render if a saved game exists, otherwise keeps the fresh game.
-- `loadFromSaved()` restores the board grid, `currentTurn`, castling rights, en-passant target, king positions, `selectedSquare`, `legalMoves`, `moveHistory`, `gameActive`, `lastMove`, `botDifficulty` (syncs the dropdown **and** `chessGame.botDifficulty`, which `canUndo()`/`undoLastMove()` gate on) and clock `currentTime`, then calls `stopTimer()` + `updateTakeBackButton()`.
+- `loadFromSaved()` restores the board grid, `currentTurn`, castling rights, en-passant target, king positions, `selectedSquare`, `legalMoves`, `moveHistory`, `gameActive`, `lastMove`, `botDifficulty` (syncs the dropdown **and** `chessGame.botDifficulty`, which `canUndo()`/`undoLastMove()` gate on) and clock `currentTime`, then calls `stopTimer()` + `updateTakeBackButton()` + `triggerBotIfBlackTurn()` (re-triggers the bot if the restored game is on Black's turn — without this the restored game would stay frozen).
 
 ### Test Steps
 | Step | Action | Expected Result |
@@ -213,6 +213,80 @@ getLegalMoves: (row, col) => chessGame.getLegalMoves(chessGame.board, row, col),
 - Knight at b1 correctly shows 2 legal moves
 - Rook at a1 correctly shows 0 legal moves (blocked by pawn)
 - Pawn movements calculate correctly
+
+---
+
+### Fixed: Pawn "Attacking" the Square Diagonally Behind It (2026-09-06)
+
+**Issue:** The bot treated pawns as if they defended/attacked the square *diagonally behind* them — e.g. a black pawn on b6 was counted as a defender of a piece on c7, inflating trade penalties and making the bot decline sound captures. Conversely, real forward-diagonal attacks were missed (a pawn on e6 was not seen as checking a king on d5).
+
+**Root Cause:** `GameState.isSquareUnderAttack()` in `chess-core.js` looked for the attacking pawn one row *in its direction of travel* from the target square. A pawn at `(r, c)` attacks `(r + direction, c ± 1)`, so the attacking pawn must sit one row on the *opposite* side of the target:
+
+```javascript
+// Before (wrong — finds a pawn diagonally behind the target):
+const pawnDirection = attackerColor === 'white' ? -1 : 1;
+board.getPiece(row + pawnDirection, col ± 1)
+
+// After (correct — pawn sits opposite its travel direction from the target):
+const attackerRow = row - (attackerColor === 'white' ? -1 : 1);
+board.getPiece(attackerRow, col ± 1)
+```
+
+The sign error affected **both colors**. Impact (everything funnels through `isSquareUnderAttack`):
+- `getLegalMoves()` — could allow the king to walk into a real pawn check (and vice versa)
+- `isCheck()` — missed/phantom pawn checks (stalemate/mate detection, castling legality at chess-core.js L125-142)
+- Bot: `getThreateningOpponentPieces()` (false pawn threats), defender count in `calculateMoveScore()` (the user-visible "defending pieces behind it"), `checkPenalty`, `filterSafeMoves()`, bot-ai-moves.js king-in-check filters
+
+`canPieceAttack()` (bot-ai.js) was already correct — it delegates to `Pawn.getPseudoLegalMoves()` — which is why the two safety checks disagreed and the bug went unnoticed.
+
+**Verification:**
+- Engine unit checks (4/4 failing before → 4/4 passing after):
+  - Black pawn b6 does NOT "attack" c7 (diagonal-behind) — previously reported true
+  - Black pawn e6 DOES attack d5 (forward diagonal) — previously missed
+  - White pawn e4 DOES attack d5 — previously missed
+  - White pawn e4 does NOT "attack" d3 (diagonal-behind) — previously reported true
+- `getLegalMoves()`: king on e1 no longer offers e3 against a black pawn on d4 (e3 is the square the pawn truly attacks)
+- In-browser sanity (http://localhost:8000/chess.html, human-vs-human mode): isolated e5 black pawn attacks d4/f4 and none of the squares behind it; live-board "attacked" results all traceable to genuine forward-diagonal pawn attacks; no console errors
+- Cache busting bumped `?v=4` → `?v=5` in `chess.html` (9 scripts + CSS) and `bot-worker.js` (`importScripts`) **together**, per the cache-busting rule above
+
+**Prevention:**
+- Re-run the unit checks above after any change to `isSquareUnderAttack()` or `Pawn.getPseudoLegalMoves()`
+- Keep `isSquareUnderAttack()` and `canPieceAttack()` in agreement about which squares a piece attacks — they are used by different code paths and silently disagreeing (as here) masks geometry bugs
+- When verifying "behind" squares on a *populated* board, account for other pieces: diagonals behind one pawn are often forward diagonals of an adjacent pawn (e.g. the c7 pawn attacks d6, the square diagonally behind the e5 pawn)
+
+---
+
+### Fixed: Take Back Stuck at "No Move to Undo" (2026-09-06)
+
+**Issue:** The Take Back button sometimes showed "No Move to Undo" (disabled) even with moves in the move history. Worst case: reloading a bot-mode game froze it — the status bar stayed "Bot (Medium) is thinking...", the bot never moved again, and Take Back stayed disabled forever. (This is the *normal* saved state in bot mode, because `autoSave()` runs inside `executeMove()` before the bot's 500 ms reply fires, so the saved state is usually `currentTurn: 'black'`.)
+
+**Root Cause:** Two interacting problems:
+1. **The bot was not re-triggered on restore.** Only `executeMove()` scheduled the bot's reply. `loadFromSaved()` (reload restore *and* file import) restored `currentTurn: 'black'` verbatim with nothing to re-trigger the bot — the restored game was frozen, and `canUndo()`'s "bot is thinking" gate (`currentTurn === 'black'` in bot mode) then returned false permanently.
+2. **One generic disabled label.** `updateTakeBackButton()` showed "No Move to Undo" for *every* `canUndo() === false` reason — including the transient bot-thinking window and the deliberate king/rook/castling all-or-nothing rule — even though moves existed in the history. (Minor: the difficulty dropdown handler changes `chessGame.botDifficulty`, which `canUndo()`/`undoLastMove()` gate on, but never re-gated the button.)
+
+**Fix Applied:**
+- Extracted the bot-trigger block from `executeMove()` into `ChessGame.triggerBotIfBlackTurn()` (no-ops unless it's an active bot game with Black to move). `executeMove()` calls it, and `loadFromSaved()` now calls it too — a game restored on Black's turn immediately triggers the bot (covers reload restore and file import; no double-trigger possible, since a pending timer dies with navigation).
+- Added `ChessGame.getUndoState()` returning the reason Take Back is unavailable (`'ok' | 'no-moves' | 'bot-thinking' | 'not-enough' | 'protected'`); `canUndo()` delegates to it (same console diagnostics). `updateTakeBackButton()` now maps the reason to an accurate label:
+  | Reason | Label |
+  |--------|-------|
+  | `ok` | "Take Back" (enabled) |
+  | `no-moves` / `not-enough` | "No Move to Undo" |
+  | `bot-thinking` | "Bot is Thinking..." |
+  | `protected` (a move that would be undone involves king/rook/castling) | "Last Move Can't Be Undone" |
+- The difficulty dropdown handler now calls `updateTakeBackButton()` after syncing `chessGame.botDifficulty`, and `chessGame.triggerBotIfBlackTurn()` when switching into bot mode while it's Black's turn (previously that left the game frozen).
+- `renderMoveHistory()` previously early-returned on an empty history *before* reaching its `updateTakeBackButton()` call, so `createNewGame()` (and any other history reset) left a stale enabled "Take Back" with nothing to undo. The gate now runs on every render, including the empty-history path.
+
+**Verification:**
+- Restore-freeze repro (before fix): saved state with `currentTurn: 'black'` + 5 moves → reload → status stuck at "Bot is thinking...", no bot move in 3 s, button stuck at "No Move to Undo". After fix: reload → bot moves within ~1.5 s, turn returns to White, button re-enabled.
+- Thinking-window repro: during the bot's ~500 ms reply the button reads "Bot is Thinking..." (previously "No Move to Undo" while the status bar said "Bot is thinking..."), then re-enables after the bot's move.
+- King/rook/castling rule repro: after `Rb8` with 8 moves in history (human mode), the button reads "Last Move Can't Be Undone" (previously "No Move to Undo"); re-enables after the next pawn move.
+- Difficulty change mid-game re-gates the button immediately, and switching into bot mode while it's Black's turn triggers the bot (game no longer frozen).
+- Empty-history path: after `createNewGame()` with a previously enabled button, the button now correctly reads "No Move to Undo" (disabled).
+- No console errors; all assets load at `?v=8`.
+
+**Prevention:**
+- Every code path that can leave the game on Black's turn in an active bot game must trigger the bot — `executeMove` and `loadFromSaved` both call `triggerBotIfBlackTurn()`; don't duplicate the trigger logic or add a new restore path without it.
+- Keep the Take Back button's labels derived from `getUndoState()` reasons; don't collapse them back into one boolean with a single label.
 
 ---
 

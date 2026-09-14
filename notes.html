@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <title>Markdown Notebook</title>
     <style>
@@ -299,7 +299,7 @@
                 </div>
                 <div class="modal-footer">
                     <button id="btnCancel" class="btn-cancel">Cancel</button>
-                    <button id="btnConfirm" class="btn-confirm">Delete</button>
+                    <button id="btnConfirm" class="btn-confirm">Confirm</button>
                 </div>
             </div>
         </div>
@@ -314,11 +314,16 @@
         let currentNoteId = null;
         let currentView = 'source';
         let lastSavedContent = '';
-        let debugMode = true;
+        let debugMode = new URLSearchParams(window.location.search).has('debug');
         const EDIT_ZOOM_MIN = 10;
         const EDIT_ZOOM_MAX = 24;
         const EDIT_ZOOM_STEP = 2;
         let editFontSizePx = 14;
+
+        // Manager instances (created in init()); declared here to avoid implicit globals.
+        let contextMenu = null;
+        let historyManager = null;
+        let notesManager = null;
 
         function log(msg) {
             if (debugMode) console.log(`[NotesApp] ${msg}`);
@@ -507,10 +512,11 @@
                 this.cancelBtn.addEventListener('click', () => this.handleReject());
             }
 
-            show(title, message) {
+            show(title, message, confirmLabel = 'Confirm') {
                 return new Promise(resolve => {
                     this.titleEl.textContent = title;
                     this.messageEl.textContent = message;
+                    this.confirmBtn.textContent = confirmLabel;
                     this.overlay.style.display = 'flex';
                     this.resolveFn = resolve;
                 });
@@ -551,7 +557,7 @@
 
             async delete(noteId, versionIndex) {
                 if (!notes[noteId] || !notes[noteId].history[versionIndex]) return;
-                const confirmed = await modalManager.show('Delete Version', 'Are you sure you want to delete this version?');
+                const confirmed = await modalManager.show('Delete Version', 'Are you sure you want to delete this version?', 'Delete');
                 if (confirmed) {
                     notes[noteId].history.splice(versionIndex, 1);
                     this.storageManager.saveNotes(notes);
@@ -562,7 +568,7 @@
             async bulkDelete(noteId) {
                 if (!notes[noteId]) return;
                 const count = this.selectedHistoryItems.size;
-                const confirmed = await modalManager.show('Delete Versions', `Are you sure you want to delete ${count} selected versions?`);
+                const confirmed = await modalManager.show('Delete Versions', `Are you sure you want to delete ${count} selected versions?`, 'Delete');
                 if (confirmed) {
                     const sortedIndices = Array.from(this.selectedHistoryItems).sort((a, b) => b - a);
                     sortedIndices.forEach(index => notes[noteId].history.splice(index, 1));
@@ -605,6 +611,7 @@
                 const note = notes[currentNoteId];
                 const currentDiv = document.createElement('div');
                 currentDiv.className = 'history-item selected';
+                currentDiv.dataset.index = 'current';
                 currentDiv.textContent = 'Current Version (auto saving)';
                 currentDiv.addEventListener('click', () => this.select(currentNoteId, 'current'));
                 historyList.appendChild(currentDiv);
@@ -612,6 +619,7 @@
                 note.history.forEach((version, index) => {
                     const div = document.createElement('div');
                     div.className = 'history-item';
+                    div.dataset.index = index;
                     div.textContent = version.timestamp;
                     div.addEventListener('click', (e) => {
                         if (e.ctrlKey || e.metaKey) {
@@ -688,15 +696,9 @@
                 let itemElement = null;
 
                 if (isHistoryItem && typeof versionIndex === 'number') {
-                    itemElement = container.querySelectorAll('.history-item')[versionIndex + 1];
+                    itemElement = container.querySelector(`.history-item[data-index="${versionIndex}"]`);
                 } else if (!isHistoryItem && notes[itemId]) {
-                    for (const div of container.querySelectorAll('.note-item')) {
-                        if (div.textContent === notes[itemId].title || 
-                            (notes[itemId].title && div.textContent.includes(notes[itemId].title))) {
-                            itemElement = div;
-                            break;
-                        }
-                    }
+                    itemElement = container.querySelector(`.note-item[data-id="${itemId}"]`);
                 }
 
                 if (!itemElement) return;
@@ -743,7 +745,7 @@
 
                 const cancelHandler = () => {
                     if (isHistoryItem) historyManager.updateList();
-                    else this.showNoteContextMenu({ pageX: 0, pageY: 0 }, itemId); // Re-render
+                    else notesManager.updateList(); // Restore the notes list
                 };
 
                 saveBtn.addEventListener('click', saveHandler);
@@ -752,7 +754,12 @@
                     if (e.key === 'Enter') saveHandler();
                     else if (e.key === 'Escape') cancelHandler();
                 });
-                input.addEventListener('blur', () => setTimeout(saveHandler, 10));
+                // Commit-on-blur only when focus leaves the rename UI entirely;
+                // clicking Save/Cancel is handled by those buttons (no double-fire).
+                input.addEventListener('blur', (e) => {
+                    if (e.relatedTarget === saveBtn || e.relatedTarget === cancelBtn) return;
+                    cancelHandler();
+                });
             }
         }
 
@@ -779,7 +786,7 @@
             }
 
             async deleteAsync(noteId) {
-                const confirmed = await modalManager.show('Delete Note', `Are you sure you want to delete this note?`);
+                const confirmed = await modalManager.show('Delete Note', `Are you sure you want to delete this note?`, 'Delete');
                 if (confirmed) { this.deleteNoteInternal(noteId); }
             }
 
@@ -790,7 +797,7 @@
                 if (currentNoteId === noteId) {
                     const noteIds = Object.keys(notes);
                     if (noteIds.length > 0) { this.select(noteIds[0]); }
-                    else { editContent.value = ''; currentNoteId = null; }
+                    else { editContent.value = ''; currentNoteId = null; this.historyManager.updateList(); }
                 }
             }
 
@@ -798,6 +805,7 @@
 
             select(noteId) {
                 if (!notes[noteId]) return;
+                this.storageManager.cancelAutoSave(); // discard any pending auto-save from the previous note
                 currentNoteId = noteId;
                 this.loadContent(noteId);
                 this.updateList();
@@ -820,6 +828,7 @@
                 for (const [noteId, note] of Object.entries(notes)) {
                     const div = document.createElement('div');
                     div.className = 'note-item';
+                    div.dataset.id = noteId;
                     if (currentNoteId === noteId) div.classList.add('selected');
                     div.textContent = note.title || 'Untitled Note';
                     div.addEventListener('click', () => this.select(noteId));
@@ -852,6 +861,7 @@
                             reject(error);
                         }
                     };
+                    fileInput.oncancel = () => { log('File selection cancelled'); resolve(); };
                     fileInput.click();
                 });
             }
@@ -888,11 +898,13 @@
 
         function updateForPreviewMode() {
             if (currentView === 'preview') {
-                let markdownContent = marked.parse(editContent.value);
-                markdownContent = renderMathWithKaTeX(markdownContent);
                 let previewDiv = document.getElementById('markdownPreview');
                 if (!previewDiv) { previewDiv = document.createElement('div'); previewDiv.className = 'markdown-view'; previewDiv.id = 'markdownPreview'; editPanel.appendChild(previewDiv); }
-                previewDiv.innerHTML = markdownContent;
+                if (typeof marked === 'undefined') {
+                    previewDiv.textContent = 'Markdown preview unavailable (marked.js failed to load).';
+                } else {
+                    previewDiv.innerHTML = renderMathWithKaTeX(marked.parse(editContent.value));
+                }
                 applyEditZoom();
                 editContent.style.display = 'none';
                 toggleViewBtn.textContent = 'Source';
@@ -907,15 +919,17 @@
         }
 
         function renderMathWithKaTeX(htmlContent) {
+            if (typeof katex === 'undefined') return htmlContent; // KaTeX failed to load
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = htmlContent;
             const mathElements = tempDiv.querySelectorAll('p, li, div');
             mathElements.forEach(element => {
                 const text = element.textContent;
-                if (text.includes('$') || text.includes('$$')) {
+                if (text.includes('$')) {
                     let content = element.innerHTML;
-                    content = content.replace(/\$(.*?)\$/g, (match, math) => { try { return katex.renderToString(math, { displayMode: false }); } catch (error) { return match; } });
+                    // Render display math ($$...$$) before inline math ($...$).
                     content = content.replace(/\$\$(.*?)\$\$/g, (match, math) => { try { return katex.renderToString(math, { displayMode: true }); } catch (error) { return match; } });
+                    content = content.replace(/\$(.*?)\$/g, (match, math) => { try { return katex.renderToString(math, { displayMode: false }); } catch (error) { return match; } });
                     element.innerHTML = content;
                 }
             });
@@ -967,9 +981,7 @@
 
             document.addEventListener('click', (e) => { if (!contextMenu.element.contains(e.target)) contextMenu.hide(); });
             log('Global click listener set');
-
-            btnConfirm.addEventListener('click', () => modalManager.handleAccept());
-            btnCancel.addEventListener('click', () => modalManager.handleReject());
+            // Modal confirm/cancel listeners are registered once in the ModalManager constructor.
         }
 
         // ==================================================================

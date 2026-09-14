@@ -326,18 +326,25 @@ class ChessGame {
         // gameActive is true again; no timer restart needed here.
     }
 
-    canUndo() {
+    getUndoState() {
+        // Reason Take Back is (not) available. updateTakeBackButton() shows a
+        // label matching the actual reason instead of a generic "No Move to Undo":
+        //   'ok'           — can undo
+        //   'no-moves'     — history is empty
+        //   'bot-thinking' — bot game, Black to move (bot reply pending)
+        //   'not-enough'   — bot game with fewer than 2 half-moves to undo
+        //   'protected'    — a move that would be undone involves king/rook/castling
         // For bot games, disable Take Back while bot is thinking
         if (this.botAI !== null && this.botDifficulty !== 'none') {
             const currentTurn = this.gameState.currentTurn;
             if (currentTurn === 'black') { 
                 console.log('[ChessGame.canUndo] Bot is thinking - disabled');
-                return false; 
+                return 'bot-thinking'; 
             }
         }
         
         if (this.moveHistory.length === 0) { 
-            console.log('  NO: no moves'); return false; 
+            console.log('  NO: no moves'); return 'no-moves'; 
         }
         
         // For bot games, the undo covers the bot's move AND the human's previous move,
@@ -347,7 +354,7 @@ class ChessGame {
         console.log('[ChessGame.canUndo] Checking...', this.moveHistory.length, 'moves (need', movesToCheck + ')');
         
         if (this.moveHistory.length < movesToCheck) { 
-            console.log('  NO: not enough moves'); return false; 
+            console.log('  NO: not enough moves'); return 'not-enough'; 
         }
         
         for (let i = this.moveHistory.length - movesToCheck; i < this.moveHistory.length; i++) {
@@ -355,12 +362,16 @@ class ChessGame {
             if (move.piece.type === 'k' || move.piece.type === 'r' ||
                 move.to.isCastling === 'kingside' || move.to.isCastling === 'queenside') {
                 console.log('  NO: king/rook/castling move at index', i);
-                return false;
+                return 'protected';
             }
         }
         
         console.log('  YES: can undo');
-        return true;
+        return 'ok';
+    }
+
+    canUndo() {
+        return this.getUndoState() === 'ok';
     }
     async executeMove(from, to) {
         const piece = this.board.grid[from.row][from.col];
@@ -461,7 +472,20 @@ class ChessGame {
         // when this move ends the game. (Note: chessGame.botAI is never null — even in
         // 'none' mode — so key clock decisions off botDifficulty, not botAI.)
 
-        // Read current dropdown value at move time to handle difficulty changes during game
+        // Bot's reply, if this move handed the turn to Black. Shared with
+        // loadFromSaved() so a game restored on Black's turn isn't left frozen.
+        this.triggerBotIfBlackTurn();
+    }
+
+    /**
+     * Schedule the bot's reply when it is Black's turn in an active bot game.
+     * Called after every human move (executeMove) and after restoring a game
+     * (loadFromSaved) — autoSave() runs before the bot's reply fires, so a saved
+     * bot game is normally on Black's turn and must re-trigger the bot on restore.
+     * Reads the dropdown value at trigger time to handle difficulty changes
+     * during game.
+     */
+    triggerBotIfBlackTurn() {
         const currentDifficulty = getCurrentDifficulty();
 
         if (currentDifficulty !== 'none' && this.gameState.currentTurn === 'black' && this.gameActive) {
@@ -469,12 +493,12 @@ class ChessGame {
             const useWorker = currentDifficulty === 'hard' && typeof Worker !== 'undefined';
             setTimeout(() => {
                 const finish = (result) => {
-                    console.log('[ChessGame.executeMove] Bot result:', result);
+                    console.log('[ChessGame.triggerBotIfBlackTurn] Bot result:', result);
                     if (result.type === 'checkmate') { self.gameActive = false; updateStatus(); updateTakeBackButton(); }
                     else if (result.type === 'stalemate') { self.gameActive = false; updateStatus(); updateTakeBackButton(); }
                     else if (result.from && result.to) {
                         const detail = (result._depth !== undefined) ? ` (depth=${result._depth}, ${result._ms}ms)` : '';
-                        console.log('[ChessGame.executeMove] Executing bot move' + detail);
+                        console.log('[ChessGame.triggerBotIfBlackTurn] Executing bot move' + detail);
                         self.executeMove(result.from, result.to);
                     }
                 };
@@ -484,7 +508,7 @@ class ChessGame {
                 };
                 if (useWorker) {
                     self._searchWithWorker().then(finish).catch((e) => {
-                        console.warn('[ChessGame.executeMove] Worker search failed, falling back:', (e && e.message) || e);
+                        console.warn('[ChessGame.triggerBotIfBlackTurn] Worker search failed, falling back:', (e && e.message) || e);
                         runSynchronous();
                     });
                 } else {

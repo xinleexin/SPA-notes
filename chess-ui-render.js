@@ -177,20 +177,36 @@ function getPieces(color) {
 const chessBoardElement = document.getElementById('mcp-board-grid-8x8');
 const gameStatusElement = document.getElementById('mcp-status-display');
 
+// Reason-specific disabled labels (from ChessGame.getUndoState()) so the button
+// never claims "No Move to Undo" when the real reason is different (bot thinking,
+// or the last move being one of the king/rook/castling moves that can't be undone).
+const UNDO_DISABLED_LABELS = {
+    'no-moves': 'No Move to Undo',
+    'not-enough': 'No Move to Undo',
+    'bot-thinking': 'Bot is Thinking...',
+    'protected': "Last Move Can't Be Undone"
+};
+
 function updateTakeBackButton() {
     const btn = document.getElementById('mcp-btn-reset-position');
-    if (chessGame && chessGame.canUndo()) {
+    const state = chessGame ? chessGame.getUndoState() : 'no-moves';
+    if (state === 'ok') {
         btn.disabled = false;
         btn.textContent = 'Take Back';
     } else {
         btn.disabled = true;
-        btn.textContent = 'No Move to Undo';
+        btn.textContent = UNDO_DISABLED_LABELS[state] || 'No Move to Undo';
     }
 }
 
 function renderMoveHistory() {
     const moveHistoryList = document.getElementById('mcp-move-history-list');
     moveHistoryList.innerHTML = '';
+
+    // Re-gate the Take Back button on every render — including the empty-history
+    // early return below (previously that path skipped the gate, leaving a stale
+    // enabled "Take Back" after createNewGame() or any other history reset).
+    updateTakeBackButton();
 
     if (chessGame.moveHistory.length === 0) {
         moveHistoryList.innerHTML = '<p class="history-empty">No moves yet</p>';
@@ -221,9 +237,6 @@ function renderMoveHistory() {
     }
 
     moveHistoryList.scrollTop = moveHistoryList.scrollHeight;
-    
-    // Update Take Back button state after rendering history
-    updateTakeBackButton();
 }
 
 function updateStatus() {

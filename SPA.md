@@ -83,7 +83,7 @@ All state persists to `localStorage`:
 #### NotesManager
 - `create()` - Create new note with timestamp title
 - `delete(noteId)` - Delete note with confirmation
-- `rename(noteId)` - Rename via prompt dialog
+- `rename(noteId)` - Rename via inline rename field (context menu)
 - `select(noteId)` - Select and load note content
 - `import()` / `export()` - File-based import/export
 
@@ -499,9 +499,8 @@ This was a **regression bug** introduced during code refactoring. The original i
 | File | Purpose |
 |------|---------|
 | `SPA.md` | This workspace skill documentation |
-| `notes.html` | Main notes SPA application |
-| `note.html` | Individual note template/variant |
-| `start-server.ps1` | Starts a local HTTP server on port 8000 (required to load the modularized JS via `<script src>`) |
+| `notes.html` | Main notes SPA application (single inline file; open directly from `file://`, no server needed) |
+| `start-server.ps1` | Starts a local HTTP server on port 8000 for the **chess** app (opens `chess.html`; notes.html needs no server) |
 | **Chess SPA (classic global scripts, no build)** | |
 | `chess.html` | Chess SPA shell (~60 lines): DOM + `<link>`/`<script>` wiring only |
 | `chess.css` | All chess UI styling (linked via `?v=2`) |

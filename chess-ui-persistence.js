@@ -143,6 +143,13 @@ function loadFromSaved(savedData) {
     stopTimer();
     
     updateTakeBackButton();
+
+    // Re-trigger the bot if the restored game is on Black's turn. autoSave() runs
+    // before the bot's reply fires, so a saved bot game is normally on Black's
+    // turn — without this the restored game stays frozen (bot never moves) and
+    // Take Back is stuck disabled. The method no-ops when not applicable
+    // (human mode, White to move, or finished game).
+    chessGame.triggerBotIfBlackTurn();
 }
 
 function getGameState() {

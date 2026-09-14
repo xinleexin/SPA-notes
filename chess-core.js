@@ -206,13 +206,16 @@ class GameState {
         return null;
     }
     isSquareUnderAttack(board, row, col, attackerColor) {
-        const pawnDirection = attackerColor === 'white' ? -1 : 1;
-        if (board.isValidPosition(row + pawnDirection, col - 1)) {
-            const piece = board.getPiece(row + pawnDirection, col - 1);
+        // A pawn at (r, c) attacks (r + direction, c ± 1), so the attacking
+        // pawn sits one row *opposite* its travel direction from the target
+        // square (a pawn never attacks the diagonal behind itself).
+        const attackerRow = row - (attackerColor === 'white' ? -1 : 1);
+        if (board.isValidPosition(attackerRow, col - 1)) {
+            const piece = board.getPiece(attackerRow, col - 1);
             if (piece && piece.color === attackerColor && piece.type === 'p') return true;
         }
-        if (board.isValidPosition(row + pawnDirection, col + 1)) {
-            const piece = board.getPiece(row + pawnDirection, col + 1);
+        if (board.isValidPosition(attackerRow, col + 1)) {
+            const piece = board.getPiece(attackerRow, col + 1);
             if (piece && piece.color === attackerColor && piece.type === 'p') return true;
         }
 
